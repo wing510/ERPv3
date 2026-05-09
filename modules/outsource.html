@@ -1,0 +1,318 @@
+<!-- ===== Outsource 委外加工單（PROCESS） ===== -->
+<div class="card">
+  <div class="card-header card-header-flex">
+    <span>
+      Outsource 委外加工單
+      <button type="button" class="btn-sheet" onclick="openSheetLink('process_order')" title="在 Google Sheets 開啟對應工作表">Sheet</button>
+      <span id="procStatusHint" style="font-size:12px;color:#64748b;font-weight:500;margin-left:10px;">加工流程：新單 — 填主檔後按下方「建立」</span>
+      <span id="procInvHint" style="font-size:12px;color:#64748b;font-weight:500;margin-left:10px;">庫存狀態：未載入 — 請先建立或載入加工單</span>
+    </span>
+    <span style="display:flex;align-items:center;gap:10px;">
+      <span data-help="outsourceHeader"></span>
+    </span>
+  </div>
+
+  <div class="card-body">
+    <div class="form-grid-4">
+      <div class="form-group">
+        <label>加工單ID *</label>
+        <input type="text" id="proc_id" placeholder="自動產生ID">
+      </div>
+
+      <div class="form-group">
+        <label>加工類型 *</label>
+        <select id="proc_type">
+          <option value="">請選擇</option>
+          <option value="PROCESS">PROCESS（加工）</option>
+          <option value="PACKING">PACKING（包裝）</option>
+          <option value="REPACK">REPACK（改包裝）</option>
+          <option value="REWORK">REWORK（重工）</option>
+          <option value="SPLIT">SPLIT（拆批）</option>
+          <option value="MERGE">MERGE（合批）</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>來源類別</label>
+        <select id="proc_source_type">
+          <option value="">請選擇</option>
+          <option value="RM">RM（原料）</option>
+          <option value="WIP">WIP（半成品）</option>
+          <option value="FG">FG（成品）</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>加工廠（供應商） *</label>
+        <select id="proc_supplier_id"></select>
+      </div>
+
+      <div class="form-group">
+        <label>預計到貨日期</label>
+        <input type="date" id="proc_planned_date">
+      </div>
+
+      <div class="form-group form-group-span-3">
+        <label>備註</label>
+        <input type="text" id="proc_remark">
+      </div>
+    </div>
+
+    <div class="button-group">
+      <button class="btn-primary" id="proc_create_btn" onclick="createProcessOrderOnly(this)">1) 建立加工單</button>
+      <button class="btn-secondary" id="proc_update_hdr_btn" onclick="updateProcessOrderHeader(this)">更新備註/預計到貨日期</button>
+      <button class="btn-secondary" id="proc_cancel_btn" onclick="cancelProcessOrder(this)">取消加工單（回沖）</button>
+      <button class="btn-secondary" onclick="resetProcessForm()">清除</button>
+      <button class="btn-secondary" onclick="openLogs('process_order', document.getElementById('proc_id')?.value || '', 'process')">Log</button>
+    </div>
+    <div id="procBlockNotice" style="display:none;margin-top:10px;padding:10px 12px;background:#fff7ed;border:1px solid #fed7aa;border-left:4px solid #f97316;border-radius:8px;">
+      <details id="procBlockDetails" open>
+        <summary id="procBlockTitle" style="cursor:pointer;font-weight:600;color:#9a3412;">操作被阻擋</summary>
+        <ul id="procBlockReasonList" style="margin:8px 0 0 18px;color:#7c2d12;line-height:1.6;"></ul>
+      </details>
+    </div>
+  </div>
+</div>
+
+<style>
+.proc-lot-modal { position:fixed; inset:0; z-index:9000; display:flex; align-items:center; justify-content:center; padding:16px; }
+.proc-lot-modal-overlay { position:absolute; inset:0; background:rgba(0,0,0,0.4); }
+.proc-lot-modal-dialog { position:relative; background:#fff; border-radius:10px; box-shadow:0 8px 32px rgba(0,0,0,0.2); width:100%; max-width:980px; padding:18px; }
+</style>
+<!-- ===== 投料（Inputs） ===== -->
+<div class="card">
+  <div class="card-header card-header-flex">
+    <span>投料（僅限 QA已放行 批次）</span>
+    <span data-help="outsourceInputs"></span>
+  </div>
+  <div class="card-body">
+    <div class="form-grid-4">
+      <div class="form-group">
+        <label>Lot *</label>
+        <input type="text" id="proc_input_lot_display" readonly placeholder="請在下方按「選擇 Lot」帶入">
+        <input type="hidden" id="proc_input_lot">
+      </div>
+
+      <div class="form-group">
+        <label>可用量</label>
+        <input type="text" id="proc_input_available" readonly>
+      </div>
+
+      <div class="form-group">
+        <label>投料數量 *</label>
+        <div class="erp-input-with-suffix">
+          <input type="number" id="proc_input_qty" min="0" step="0.01">
+          <span id="proc_input_unit_suffix" class="erp-input-suffix"></span>
+        </div>
+        <input type="hidden" id="proc_input_unit" value="">
+      </div>
+
+      <div class="form-group full-width">
+        <label>備註</label>
+        <input type="text" id="proc_input_remark">
+      </div>
+    </div>
+
+    <div class="button-group">
+      <button class="btn-primary" id="proc_add_input_btn" onclick="addProcInputDraft()">新增投料</button>
+      <button type="button" id="proc_pick_lot_btn" class="btn-secondary" onclick="openProcLotPicker()">選擇 Lot</button>
+      <button class="btn-secondary" id="proc_update_in_remark_btn" onclick="updateSelectedProcInputRemark(this)">更新本筆備註</button>
+    </div>
+
+    <br>
+
+    <div class="table-wrapper" style="height:220px;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>項次</th>
+            <th>Lot</th>
+            <th>產品（規格）</th>
+            <th>倉別</th>
+            <th>投料數量</th>
+            <th>狀態</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="procInputBody"></tbody>
+      </table>
+    </div>
+
+    <div class="button-group" style="margin-top:10px;">
+      <button class="btn-primary" id="proc_issue_btn" onclick="issueProcessOrder()">2) 送加工（扣庫）</button>
+      <button class="btn-secondary" onclick="scrollToEditorTop()">回到上方</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Lot Picker Modal ===== -->
+<div id="procLotPickerModal" class="proc-lot-modal" style="display:none;" role="dialog" aria-modal="true">
+  <div class="proc-lot-modal-overlay" onclick="closeProcLotPicker()"></div>
+  <div class="proc-lot-modal-dialog">
+    <h3 style="margin:0 0 12px;font-size:18px;color:#1e293b;">選擇 Lot（僅 ACTIVE + QA已放行 + 可用量>0）</h3>
+    <div class="search-toolbar" style="margin-bottom:10px;">
+      <input type="text" id="proc_lot_picker_keyword" placeholder="搜尋 Lot ID / 產品名稱 / 倉別" style="min-width:280px;">
+      <select id="proc_lot_picker_viewmode">
+        <option value="flat">flat（一般清單）</option>
+        <option value="group_source">group_source（依來源分組）</option>
+      </select>
+      <button type="button" class="btn-secondary" onclick="closeProcLotPicker()">關閉</button>
+    </div>
+    <div class="table-wrapper" style="max-height:360px;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Lot ID</th>
+            <th>產品名稱</th>
+            <th>倉別</th>
+            <th>可用量</th>
+            <th>效期</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="procLotPickBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 產出（Outputs） ===== -->
+<div class="card">
+  <div class="card-header card-header-flex">
+    <span>回收（可分批；每次產生新 Lot，預設 PENDING）</span>
+    <span data-help="outsourceOutputs"></span>
+  </div>
+  <div class="card-body">
+    <div class="form-grid-4">
+      <div class="form-group">
+        <label>產出產品 *</label>
+        <select id="proc_output_product" onchange="onSelectProcOutputProduct()"></select>
+      </div>
+
+      <div class="form-group">
+        <label>回收數量 *</label>
+        <div class="erp-input-with-suffix">
+          <input type="number" id="proc_output_qty" min="0" step="0.01">
+          <span id="proc_output_unit_suffix" class="erp-input-suffix"></span>
+        </div>
+        <input type="hidden" id="proc_output_unit" value="">
+      </div>
+
+      <div class="form-group">
+        <label>預估損耗（僅顯示）</label>
+        <input type="text" id="proc_loss_hint" readonly>
+      </div>
+
+      <div class="form-group">
+        <label>回收入庫倉庫</label>
+        <select id="proc_output_warehouse"></select>
+      </div>
+
+      <div class="form-group full-width">
+        <label>備註</label>
+        <input type="text" id="proc_output_remark">
+      </div>
+    </div>
+
+    <div class="button-group">
+      <button class="btn-primary" id="proc_add_output_btn" onclick="addProcOutputDraft()">新增產出</button>
+      <button class="btn-secondary" id="proc_update_out_remark_btn" onclick="updateSelectedProcOutputRemark(this)">更新本筆備註</button>
+    </div>
+
+    <div style="margin-top:10px;color:#475569;font-size:13px;">
+      <label style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" id="proc_close_allow_loss">
+        本次回收後結案（允許耗損）
+      </label>
+    </div>
+
+    <br>
+    <div class="table-wrapper" style="height:220px;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>項次</th>
+            <th>產出產品（規格）</th>
+            <th>回收數量</th>
+            <th>狀態</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="procOutputBody"></tbody>
+      </table>
+    </div>
+
+    <div class="button-group" style="margin-top:10px;">
+      <button class="btn-primary" id="proc_receive_btn" onclick="receiveProcessOutput()">3) 回收加工品</button>
+      <button class="btn-secondary" onclick="scrollToEditorTop()">回到上方</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 加工單列表 ===== -->
+<div class="card">
+  <div class="card-header card-header-flex">
+    <span>加工單列表</span>
+    <span data-help="outsourceList"></span>
+  </div>
+  <div class="card-body">
+    <div class="search-toolbar" style="margin-bottom:12px;">
+      <input type="text" id="proc_search_keyword" placeholder="關鍵字（加工單ID／類型／來源／加工廠）" style="min-width:280px;" title="比對加工單ID、加工類型、來源類別、加工廠ID／名稱">
+      <select id="proc_search_status">
+        <option value="">全部狀態</option>
+        <option value="OPEN">OPEN（開單中）</option>
+        <option value="POSTED">POSTED（已結案）</option>
+        <option value="CANCELLED">CANCELLED（已取消）</option>
+      </select>
+      <button type="button" class="btn-secondary" onclick="resetProcListSearch()">重設</button>
+    </div>
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>加工單ID</th>
+            <th>類型</th>
+            <th>來源類別</th>
+            <th>加工廠</th>
+            <th>狀態</th>
+            <th>建立時間</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="procTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 已載入加工單（明細） ===== -->
+<div class="card">
+  <div class="card-header card-header-flex">
+    <span>
+      已載入加工單明細（投料 / 產出 / 關聯）
+      <button type="button" class="btn-sheet" onclick="openSheetLink('process_order')" title="加工單主檔（process_order）">Sheet</button>
+    </span>
+    <span data-help="outsourceList"></span>
+  </div>
+  <div class="card-body">
+    <div class="form-grid-4">
+      <div class="form-group full-width">
+        <label>明細摘要</label>
+        <pre id="procLoadedSummary" class="logs-pre" style="max-height:220px;"></pre>
+      </div>
+      <div class="form-group full-width">
+        <label>投料（process_order_input）</label>
+        <pre id="procLoadedInputs" class="logs-pre" style="max-height:220px;"></pre>
+      </div>
+      <div class="form-group full-width">
+        <label>產出（process_order_output）</label>
+        <pre id="procLoadedOutputs" class="logs-pre" style="max-height:220px;"></pre>
+      </div>
+      <div class="form-group full-width">
+        <label>批次關聯（lot_relation）</label>
+        <pre id="procLoadedRelations" class="logs-pre" style="max-height:220px;"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+

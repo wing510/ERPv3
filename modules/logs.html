@@ -1,0 +1,85 @@
+<div class="card">
+  <div class="card-header card-header-flex">
+    <span>
+      Logs 操作紀錄
+      <button type="button" class="btn-sheet" onclick="openSheetLink('logs')" title="在 Google Sheets 開啟對應工作表">Sheet</button>
+    </span>
+    <span style="font-size:12px;color:#64748b;" id="logsCountText"></span>
+    <span data-help="logsMain"></span>
+  </div>
+
+  <div class="card-body">
+
+    <!-- 分頁：英文大寫與左側 section-title 一致 + 中文 -->
+    <div class="logs-tab-bar" style="display:flex;flex-wrap:wrap;margin-bottom:12px;">
+      <button class="btn-secondary" id="logs_tab_all" onclick="setLogsTab('all')">ALL 全部</button>
+      <button class="btn-secondary" id="logs_tab_master" onclick="setLogsTab('master')">MASTER 主檔</button>
+      <button class="btn-secondary" id="logs_tab_inbound" onclick="setLogsTab('inbound')">INBOUND 進貨</button>
+      <button class="btn-secondary" id="logs_tab_inventory" onclick="setLogsTab('inventory')">INVENTORY 庫存</button>
+      <button class="btn-secondary" id="logs_tab_process" onclick="setLogsTab('process')">PROCESS 加工</button>
+      <button class="btn-secondary" id="logs_tab_sales" onclick="setLogsTab('sales')">SALES 銷售</button>
+      <button class="btn-secondary" id="logs_tab_shipment" onclick="setLogsTab('shipment')">SHIPMENT 出貨</button>
+    </div>
+
+    <!-- 篩選器 -->
+    <div class="search-toolbar" style="margin-bottom:16px;">
+      <select id="logs_filter_table">
+        <option value="">全部資料表</option>
+      </select>
+
+      <select id="logs_filter_range">
+        <option value="7">最近 7 天</option>
+        <option value="30">最近 30 天</option>
+        <option value="all">全部時間</option>
+      </select>
+
+      <select id="logs_search_action">
+        <option value="">全部動作</option>
+        <option value="CREATE">CREATE（建立）</option>
+        <option value="UPDATE">UPDATE（更新）</option>
+        <option value="DELETE">DELETE（刪除）</option>
+      </select>
+
+      <input id="logs_search_keyword"
+             type="text"
+             placeholder="關鍵字搜尋">
+
+      <button class="btn-secondary" onclick="resetLogsFilters()">重設</button>
+    </div>
+
+    <!-- 表格 -->
+    <div class="table-wrapper">
+      <table class="data-table logs-table">
+
+        <colgroup>
+          <col class="logs-col-id">
+          <col class="logs-col-table">
+          <col class="logs-col-ref">
+          <col class="logs-col-action">
+          <col class="logs-col-user">
+          <col class="logs-col-time">
+          <col class="logs-col-view">
+        </colgroup>
+
+        <thead>
+          <tr>
+            <th>紀錄編號</th>
+            <th>資料表</th>
+            <th>參考ID</th>
+            <th>操作類型</th>
+            <th>操作人</th>
+            <th>時間</th>
+            <th>明細</th>
+          </tr>
+        </thead>
+
+        <tbody id="logsTableBody"></tbody>
+
+      </table>
+    </div>
+
+    <!-- 下方展開明細區 -->
+    <div id="logsDetailArea" style="margin-top:20px;"></div>
+
+  </div>
+</div>

@@ -1,0 +1,168 @@
+<!-- ===== 編輯卡片 ===== -->
+  <div class="card">
+    <div class="card-header card-header-flex">
+      <span>
+        Products 產品
+        <button type="button" class="btn-sheet" onclick="openSheetLink('product')" title="在 Google Sheets 開啟對應工作表">Sheet</button>
+      </span>
+      <span data-help="productEdit"></span>
+    </div>
+
+  <div class="card-body">
+
+    <div class="form-grid-4">
+
+      <div class="form-group">
+        <label>產品ID *</label>
+        <input type="text" id="p_id" placeholder="自動產生ID">
+      </div>
+
+      <div class="form-group">
+        <label>產品名稱 *</label>
+        <input type="text" id="p_name">
+      </div>
+
+      <div class="form-group">
+        <label>規格</label>
+        <input type="text" id="p_spec">
+      </div>
+
+      <div class="form-group">
+        <label>單位 *</label>
+        <select id="p_unit">
+          <option value="">請選擇</option>
+          <option value="L">L（公升）</option>
+          <option value="KG">KG（公斤）</option>
+          <option value="PCS">PCS（件）</option>
+          <option value="PC">PC（顆）</option>
+          <option value="BOX">BOX（盒）</option>
+          <option value="BOTTLE">BOTTLE（瓶）</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>類型 *</label>
+        <select id="p_type">
+          <option value="">請選擇</option>
+          <option value="RM">RM（原料）</option>
+          <option value="WIP">WIP（半成品）</option>
+          <option value="FG">FG（成品）</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>狀態</label>
+        <div class="erp-status-select-row">
+          <select id="p_status">
+            <option value="ACTIVE">ACTIVE（使用中）</option>
+            <option value="INACTIVE">INACTIVE（停用）</option>
+          </select>
+          <span id="p_status_lamp" class="status-lamp status-lamp--solo status-lamp--active" role="img" title="ACTIVE（使用中）" aria-label="ACTIVE（使用中）"><span class="status-lamp-dot" aria-hidden="true"></span></span>
+        </div>
+      </div>
+
+      <div class="form-group form-group-span-2">
+        <label>備註</label>
+        <input type="text" id="p_remark">
+      </div>
+
+      <div class="form-group full-width">
+        <details id="p_multi_unit_details" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;min-width:0;max-width:100%;box-sizing:border-box;">
+          <summary style="cursor:pointer;font-weight:600;color:#475569;font-size:13px;line-height:1.35;">
+            多單位換算（用途：當投料與回收單位不同，例如投料 KG、回收 BOX 時，系統會依此規則換算後再比較）
+          </summary>
+          <div style="margin-top:10px;color:#475569;line-height:1.6;min-width:0;max-width:100%;">
+            <div id="p_unit_ratio_group" style="margin-top:0;min-width:0;max-width:100%;">
+              <div class="p-unit-ratio-table-host">
+                <input type="hidden" id="p_unit_ratio_to_base_json">
+                <div class="p-unit-ratio-matrix">
+                  <div class="p-unit-ratio-matrix-inner">
+                    <div class="p-unit-ratio-matrix-head">
+                      <span class="p-unit-ratio-matrix-lead">每</span>
+                      <select id="p_base_unit" class="p-unit-ratio-matrix-base-select" title="投料單位">
+                        <option value="">（預設同產品單位）</option>
+                        <option value="L">L（公升）</option>
+                        <option value="KG">KG（公斤）</option>
+                        <option value="PCS">PCS（件）</option>
+                        <option value="PC">PC（顆）</option>
+                        <option value="BOX">BOX（盒）</option>
+                        <option value="BOTTLE">BOTTLE（瓶）</option>
+                        <option value="BAG">BAG（袋）</option>
+                      </select>
+                      <span class="p-unit-ratio-matrix-lead">投料可產生</span>
+                    </div>
+                    <div class="p-unit-ratio-matrix-rows" id="p_unit_ratio_rows"></div>
+                  </div>
+                </div>
+                <div class="button-group" style="margin-top:8px;">
+                  <button type="button" class="btn-secondary btn-sm" style="min-width:96px;" onclick="addProductUnitRatioRow()">新增一條產出</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </details>
+      </div>
+
+    </div>
+
+    <div class="button-group">
+      <button class="btn-primary" id="p_create_btn" onclick="createProduct(this)">建立</button>
+      <button class="btn-secondary" id="p_update_btn" onclick="updateProduct(this)">更新</button>
+      <button class="btn-secondary" onclick="clearForm()">清除</button>
+      <button class="btn-secondary" onclick="openLogs('product', document.getElementById('p_id')?.value || '', 'master')">Log</button>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ===== 產品列表 ===== -->
+<div class="card">
+  <div class="card-header card-header-flex">
+    <span>
+      產品列表
+      <button type="button" class="btn-sheet" onclick="openSheetLink('product')" title="在 Google Sheets 開啟對應工作表">Sheet</button>
+    </span>
+    <span data-help="productList"></span>
+  </div>
+
+  <div class="card-body">
+
+    <!-- 搜尋一行 -->
+    <div class="search-toolbar">
+      <input type="text" id="search_product_keyword" placeholder="關鍵字（ID／名稱／規格／備註）" style="min-width:360px;" title="比對產品ID、名稱、規格、備註">
+      <select id="search_type">
+        <option value="">全部類型</option>
+        <option value="RM">RM（原料）</option>
+        <option value="WIP">WIP（半成品）</option>
+        <option value="FG">FG（成品）</option>
+      </select>
+      <select id="search_status">
+        <option value="">全部狀態</option>
+        <option value="ACTIVE">ACTIVE（使用中）</option>
+        <option value="INACTIVE">INACTIVE（停用）</option>
+      </select>
+      <button class="btn-secondary" onclick="resetSearch()">重設</button>
+    </div>
+
+    <br>
+
+    <div class="table-wrapper table-wrapper-master">
+      <table class="data-table">
+        <thead>
+        <tr>
+          <th onclick="sortProducts('product_id')">ID</th>
+          <th onclick="sortProducts('product_name')">名稱</th>
+          <th onclick="sortProducts('spec')">規格</th>
+          <th onclick="sortProducts('unit')">單位</th>
+          <th onclick="sortProducts('type')">類型</th>
+          <th class="col-status" onclick="sortProducts('status')">狀態</th>
+          <th>操作</th>
+        </tr>
+        </thead>
+        <tbody id="productTableBody"></tbody>
+      </table>
+    </div>
+
+  </div>
+</div>

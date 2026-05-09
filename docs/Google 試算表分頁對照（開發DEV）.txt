@@ -1,0 +1,45 @@
+# ERP 試算表分頁對照（開發DEV備註用）
+# 實際程式使用請改 js/core/sheet-links.js；此檔僅供人類閱讀與對照。
+# 格式：中文說明 + 英文鍵名 + 連結
+
+# --- 主檔 MASTER ---
+產品主檔 product：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=1114076682#gid=1114076682
+供應商主檔 supplier：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=99221118#gid=99221118
+客戶主檔 customer：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=1601673747#gid=1601673747
+倉庫主檔 warehouse：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=267971627#gid=267971627
+使用者主檔 user：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=1751545572#gid=1751545572
+
+# --- 採購 PURCHASE ---
+採購單 purchase_order：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=1975679446#gid=1975679446
+採購單明細 purchase_order_item：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=1592901409#gid=1592901409
+
+# --- 進口 IMPORT ---
+進口報單 import_document：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=1372231910#gid=1372231910
+進口報單品項 import_item：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=1501371837#gid=1501371837
+
+# --- 收貨 RECEIPT ---
+收貨單（一般／PO）goods_receipt：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=280711382#gid=280711382
+收貨單明細（一般）goods_receipt_item：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=2022541079#gid=2022541079
+進口收貨單 import_receipt：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=1725385985#gid=1725385985
+進口收貨明細 import_receipt_item：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=478887238#gid=478887238
+
+# --- 庫存 INVENTORY ---
+批次 lot：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=11316360#gid=11316360
+批次關聯 lot_relation：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=783277553#gid=783277553
+
+# --- 加工 PROCESS ---
+加工單 process_order：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=356318207#gid=356318207
+投料 process_order_input：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=37876354#gid=37876354
+產出 process_order_output：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=1313935145#gid=1313935145
+
+# --- 銷售 SALES ---
+銷售單 sales_order：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=1520633879#gid=1520633879
+銷售單明細 sales_order_item：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=1113223744#gid=1113223744
+
+# --- 出貨 SHIPPING ---
+出貨單 shipment：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=1147399524#gid=1147399524
+出貨單明細 shipment_item：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=1610733267#gid=1610733267
+
+# --- 異動／稽核 ---
+庫存異動 inventory_movement：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=88937962#gid=88937962
+操作紀錄 logs：https://docs.google.com/spreadsheets/d/17CFX0_mgvGaaOoxRub9mw33LuukzhwrEGK5se8LbwTw/edit?gid=475164289#gid=475164289

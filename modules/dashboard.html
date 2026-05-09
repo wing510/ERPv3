@@ -1,0 +1,255 @@
+<h2 style="margin-bottom:8px;">Dashboard 儀表板</h2>
+<p style="color:#64748b;font-size:14px;margin:0 0 20px 0;">重點在「今天要處理什麼」與「風險提醒」，而非單純筆數統計。</p>
+
+<div id="dashboardFirstTimeGuide" class="card" style="display:none; background:#f0f9ff; border-left:4px solid #0ea5e9; margin-bottom:20px;">
+  <div class="card-body">
+    <strong>首次使用？</strong> 建議操作順序：<br>
+    1. 先至「<a href="#" onclick="navigate('products');return false;">產品</a>」「<a href="#" onclick="navigate('suppliers');return false;">供應商</a>」建立主檔 →
+    2. 再建「<a href="#" onclick="navigate('purchase');return false;">採購單</a>」或「<a href="#" onclick="navigate('import');return false;">進口報單</a>」 →
+    3. 到「<a href="#" onclick="navigate('receive');return false;">Goods Receipt 收貨入庫</a>」選來源、填收貨數量產生批次 →
+    4. 到「<a href="#" onclick="navigate('lots');return false;">Lots 批次QA管理</a>」做 QA 放行。
+  </div>
+</div>
+
+<!-- 待辦與風險 -->
+<div class="card" style="margin-bottom:16px;">
+  <div class="card-header card-header-flex">
+    <span>待辦與風險（批次／效期）</span>
+  </div>
+  <div class="card-body">
+    <div class="dashboard-kpi-grid">
+      <button type="button" class="dashboard-kpi dashboard-kpi-warn" onclick="navigate('lots');" title="前往 Lots 放行">
+        <span class="dashboard-kpi-label">待QA放行</span>
+        <span class="dashboard-kpi-value" id="db_pending_qa">—</span>
+        <span class="dashboard-kpi-hint">品檢 PENDING</span>
+      </button>
+      <button type="button" class="dashboard-kpi" onclick="navigate('lots');" title="前往 Lots">
+        <span class="dashboard-kpi-label">可出貨批次</span>
+        <span class="dashboard-kpi-value" id="db_shippable_lots">—</span>
+        <span class="dashboard-kpi-hint">QA已放行 · 庫存 ACTIVE · 可用量 &gt; 0</span>
+      </button>
+      <button type="button" class="dashboard-kpi dashboard-kpi-danger" onclick="navigate('lots');" title="前往 Lots 檢視效期">
+        <span class="dashboard-kpi-label">已過期批次</span>
+        <span class="dashboard-kpi-value" id="db_expired_lots">—</span>
+        <span class="dashboard-kpi-hint">有效日 &lt; 今天 · 可用量 &gt; 0</span>
+      </button>
+      <button type="button" class="dashboard-kpi dashboard-kpi-accent" onclick="navigate('lots');" title="前往 Lots">
+        <span class="dashboard-kpi-label">效期 30 天內</span>
+        <span class="dashboard-kpi-value" id="db_expiring_soon">—</span>
+        <span class="dashboard-kpi-hint">建議優先出貨或標記</span>
+      </button>
+    </div>
+    <p id="db_movement_note" style="display:none;margin:12px 0 0 0;font-size:13px;color:#b45309;background:#fffbeb;padding:8px 12px;border-radius:6px;border:1px solid #fcd34d;">
+      無法讀取庫存異動時，可用量改以 Lot 主檔推算，數字可能與 Lots 列表略有差異。
+    </p>
+  </div>
+</div>
+
+<!-- 進行中單據 -->
+<div class="card" style="margin-bottom:16px;">
+  <div class="card-header card-header-flex">
+    <span>進行中單據（摘要）</span>
+  </div>
+  <div class="card-body">
+    <div class="dashboard-doc-grid">
+      <div class="dashboard-doc-block">
+        <div class="dashboard-doc-title">採購 PO</div>
+        <div class="dashboard-doc-row"><span>進行中（OPEN／PARTIAL）</span><strong id="db_po_open">—</strong></div>
+        <div class="dashboard-doc-row"><span>已結案／取消</span><span id="db_po_closed">—</span></div>
+        <button type="button" class="btn-secondary btn-sm" onclick="navigate('purchase');">開啟採購</button>
+      </div>
+      <div class="dashboard-doc-block">
+        <div class="dashboard-doc-title">進口報單</div>
+        <div class="dashboard-doc-row"><span>進行中（OPEN）</span><strong id="db_imp_open">—</strong></div>
+        <div class="dashboard-doc-row"><span>已結案／取消</span><span id="db_imp_done">—</span></div>
+        <button type="button" class="btn-secondary btn-sm" onclick="navigate('import');">開啟報單</button>
+      </div>
+      <div class="dashboard-doc-block">
+        <div class="dashboard-doc-title">Sales Orders 銷售單</div>
+        <div class="dashboard-doc-row"><span>可出貨（OPEN／PARTIAL）</span><strong id="db_so_open">—</strong></div>
+        <div class="dashboard-doc-row"><span>已出貨完／取消</span><span id="db_so_done">—</span></div>
+        <button type="button" class="btn-secondary btn-sm" onclick="navigate('sales');">開啟銷售</button>
+      </div>
+      <div class="dashboard-doc-block">
+        <div class="dashboard-doc-title">Shipment 出貨管理</div>
+        <div class="dashboard-doc-row"><span>未過帳（OPEN）</span><strong id="db_ship_open">—</strong></div>
+        <div class="dashboard-doc-row"><span>已過帳／取消</span><span id="db_ship_posted">—</span></div>
+        <button type="button" class="btn-secondary btn-sm" onclick="navigate('shipping');">開啟出貨</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 操作流程圖（複雜版） -->
+<div class="card" style="margin-bottom:16px;">
+  <div class="card-header card-header-flex">
+    <span>操作流程圖（複雜版）</span>
+  </div>
+  <div class="card-body">
+    <div class="dashboard-flow-complex">
+      <div class="dashboard-flow-row">
+        <a href="#" onclick="navigate('products');return false;" class="dashboard-flow-node">
+          主檔建立<br><small>產品／供應商／客戶／倉庫</small>
+        </a>
+        <span class="dashboard-flow-arrow">→</span>
+        <a href="#" onclick="navigate('purchase');return false;" class="dashboard-flow-node">
+          採購流程<br><small>建立 PO（OPEN）</small>
+        </a>
+        <span class="dashboard-flow-arrow">／</span>
+        <a href="#" onclick="navigate('import');return false;" class="dashboard-flow-node">
+          報單流程<br><small>建立進口報單（OPEN）</small>
+        </a>
+        <span class="dashboard-flow-arrow">→</span>
+        <a href="#" onclick="navigate('receive');return false;" class="dashboard-flow-node">
+          收庫流程<br><small>收貨入庫 → 產生 Lot（待QA）</small>
+        </a>
+        <span class="dashboard-flow-arrow">→</span>
+        <a href="#" onclick="navigate('lots');return false;" class="dashboard-flow-node">
+          批次QA管理<br><small>Lots / QA 放行（可出貨）</small>
+        </a>
+      </div>
+
+      <div class="dashboard-flow-row" style="margin-top:10px;">
+        <a href="#" onclick="navigate('sales');return false;" class="dashboard-flow-node">
+          銷售流程<br><small>建立 SO（可出貨）</small>
+        </a>
+        <span class="dashboard-flow-arrow">→</span>
+        <a href="#" onclick="navigate('shipping');return false;" class="dashboard-flow-node">
+          出貨流程<br><small>FEFO 自動分配 Lot → 過帳扣庫</small>
+        </a>
+        <span class="dashboard-flow-arrow">→</span>
+        <a href="#" onclick="navigate('warehouse-stock');return false;" class="dashboard-flow-node">
+          倉庫庫存<br><small>依倉別查看可用量與效期</small>
+        </a>
+      </div>
+
+      <div class="dashboard-flow-row" style="margin-top:10px;">
+        <a href="#" onclick="navigate('outsource');return false;" class="dashboard-flow-node">
+          委外加工流程<br><small>投料扣庫 → 回收入庫</small>
+        </a>
+        <span class="dashboard-flow-arrow">→</span>
+        <a href="#" onclick="navigate('movements');return false;" class="dashboard-flow-node">
+          庫存異動<br><small>調整／報廢／轉倉</small>
+        </a>
+        <span class="dashboard-flow-arrow">→</span>
+        <a href="#" onclick="navigate('lots');return false;" class="dashboard-flow-node">
+          追溯/稽核<br><small>Lots 查看追溯 / Log</small>
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="button-group" id="dev_clear_button_group" style="margin-top:8px;display:none;" aria-hidden="true">
+  <button type="button" class="btn-secondary" id="dev_clear_btn" onclick="devClearNonMasterClick()" style="background:#fef3c7; color:#92400e;">開發測試：一鍵刪除（除主檔）</button>
+</div>
+
+<style>
+  .dashboard-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+    align-items: stretch;
+  }
+  /* 覆寫全域 button { height:36px }，否則 KPI 內文會被裁切溢出卡片 */
+  .dashboard-kpi {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    text-align: left;
+    height: auto;
+    min-height: 0;
+    padding: 14px 16px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    cursor: pointer;
+    transition: box-shadow .15s, border-color .15s;
+    font: inherit;
+    color: inherit;
+    white-space: normal;
+    box-sizing: border-box;
+    overflow: visible;
+  }
+  .dashboard-kpi:hover {
+    border-color: #94a3b8;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  }
+  .dashboard-kpi-label { display: block; font-size: 13px; color: #64748b; font-weight: 600; }
+  .dashboard-kpi-value { display: block; font-size: 28px; font-weight: 700; color: #0f172a; line-height: 1.2; margin: 6px 0; }
+  .dashboard-kpi-hint {
+    display: block;
+    font-size: 11px;
+    color: #94a3b8;
+    line-height: 1.45;
+    margin-top: 2px;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  .dashboard-kpi-warn { border-left: 4px solid #f59e0b; background: #fffbeb; }
+  .dashboard-kpi-danger { border-left: 4px solid #dc2626; background: #fef2f2; }
+  .dashboard-kpi-accent { border-left: 4px solid #0ea5e9; background: #f0f9ff; }
+  .dashboard-doc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+  }
+  .dashboard-doc-block {
+    padding: 12px 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #f8fafc;
+  }
+  .dashboard-doc-title { font-weight: 700; color: #334155; margin-bottom: 10px; font-size: 14px; }
+  .dashboard-doc-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 13px;
+    color: #64748b;
+    margin-bottom: 6px;
+  }
+  .dashboard-doc-row strong { color: #0f172a; font-size: 18px; }
+  .dashboard-doc-block .btn-sm { margin-top: 10px; width: 100%; }
+  .dashboard-flow {
+    display:flex;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  .dashboard-flow-complex{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+  .dashboard-flow-row{
+    display:flex;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  .dashboard-flow-node{
+    text-decoration:none;
+    color:#0f172a;
+    background:#f8fafc;
+    border:1px solid #dbe3ef;
+    border-radius:8px;
+    padding:10px 12px;
+    min-width:160px;
+    line-height:1.35;
+    font-weight:600;
+  }
+  .dashboard-flow-node small{
+    color:#64748b;
+    font-weight:500;
+    font-size:12px;
+  }
+  .dashboard-flow-arrow{
+    color:#94a3b8;
+    font-weight:700;
+    padding:0 2px;
+  }
+</style>

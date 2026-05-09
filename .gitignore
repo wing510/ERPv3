@@ -1,0 +1,30 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Cursor / VS Code
+.cursor/
+.vscode/
+
+# Node / tooling
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Playwright
+test-results/
+playwright-report/
+.playwright/
+
+# Build / cache (generic)
+dist/
+build/
+.cache/
+
+# Env / secrets
+.env
+.env.*
+credentials*.json

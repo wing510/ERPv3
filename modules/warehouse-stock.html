@@ -1,0 +1,45 @@
+<!-- ===== Warehouse 倉庫庫存 ===== -->
+<div class="card">
+  <div class="card-header card-header-flex">
+    <span>
+      Warehouse 倉庫庫存
+      <button type="button" class="btn-sheet" onclick="openSheetLink('lot')" title="Lot 工作表">Lots</button>
+      <button type="button" class="btn-sheet btn-sheet-alt" onclick="openSheetLink('inventory_movement')" title="庫存異動工作表">Movements</button>
+    </span>
+    <span data-help="warehouseStockHeader"></span>
+  </div>
+
+  <div class="card-body">
+    <div class="search-toolbar" style="flex-wrap:wrap;">
+      <select id="ws_warehouse" style="min-width:260px;"></select>
+      <input id="ws_keyword" type="text" placeholder="關鍵字（產品名稱/規格/產品ID/LotID）" style="min-width:280px;">
+      <select id="ws_view">
+        <option value="product">產品彙總</option>
+        <option value="lot">Lot 明細</option>
+      </select>
+      <select id="ws_expiry_window">
+        <option value="0">全部</option>
+        <option value="30">30 天內到期</option>
+        <option value="60">60 天內到期</option>
+        <option value="90">90 天內到期</option>
+      </select>
+      <button class="btn-secondary" onclick="refreshWarehouseStock(this)">更新</button>
+    </div>
+
+    <div id="ws_summary" style="margin-top:10px;color:#334155;font-size:13px;"></div>
+
+    <br>
+
+    <div class="table-wrapper table-wrapper-tall table-wrapper-master">
+      <table class="data-table">
+        <thead id="ws_thead"></thead>
+        <tbody id="ws_tbody"></tbody>
+      </table>
+    </div>
+
+    <p style="font-size:12px;color:#64748b;margin-top:8px;">
+      说明：可用量以 <code>inventory_movement</code> 加總為準；到期判斷以 <code>expiry_date</code> 當天 23:59:59 為截止。
+    </p>
+  </div>
+</div>
+

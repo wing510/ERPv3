@@ -1,0 +1,176 @@
+<!-- ===== 編輯卡片 ===== -->
+<div class="card">
+
+  <div class="card-header card-header-flex">
+    <span>
+      Suppliers 供應商
+      <button type="button" class="btn-sheet" onclick="openSheetLink('supplier')" title="在 Google Sheets 開啟對應工作表">Sheet</button>
+    </span>
+    <span data-help="supplierEdit"></span>
+  </div>
+
+  <div class="card-body">
+
+    <div class="form-grid-4">
+
+      <div class="form-group">
+        <label>供應商ID *</label>
+        <input type="text" id="s_id" placeholder="自動產生ID">
+      </div>
+
+      <div class="form-group">
+        <label>供應商名稱 *</label>
+        <input type="text" id="s_name">
+      </div>
+
+      <div class="form-group">
+        <label>聯絡人</label>
+        <input type="text" id="s_contact">
+      </div>
+
+      <div class="form-group">
+        <label>電話</label>
+        <input type="text" id="s_phone">
+      </div>
+
+      <div class="form-group">
+        <label>Email</label>
+        <input type="text" id="s_email">
+      </div>
+
+      <div class="form-group">
+        <label>地址</label>
+        <input type="text" id="s_address">
+      </div>
+
+      <div class="form-group">
+        <label>國家</label>
+        <select id="s_country">
+          <option value="">請選擇</option>
+          <option value="台灣">台灣</option>
+          <option value="中國">中國</option>
+          <option value="日本">日本</option>
+          <option value="韓國">韓國</option>
+          <option value="新加坡">新加坡</option>
+          <option value="馬來西亞">馬來西亞</option>
+          <option value="越南">越南</option>
+          <option value="印尼">印尼</option>
+          <option value="泰國">泰國</option>
+          <option value="美國">美國</option>
+          <option value="加拿大">加拿大</option>
+          <option value="英國">英國</option>
+          <option value="德國">德國</option>
+          <option value="澳洲">澳洲</option>
+          <option value="其他">其他</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>供應商類型(可複選) *</label>
+        <div class="erp-multiselect" data-ms="s_type">
+          <button type="button" class="erp-multiselect-btn" id="s_type_btn" aria-haspopup="listbox" aria-expanded="false">
+            <span id="s_type_text" class="erp-multiselect-text">請選擇</span>
+            <span class="erp-multiselect-caret" aria-hidden="true">▾</span>
+          </button>
+          <div id="s_type_group" class="erp-multiselect-panel" role="listbox" aria-multiselectable="true">
+            <label class="erp-checkset-item"><input type="checkbox" value="RM"> 原料</label>
+            <label class="erp-checkset-item"><input type="checkbox" value="WIP"> 半成品</label>
+            <label class="erp-checkset-item"><input type="checkbox" value="FG"> 成品</label>
+            <label class="erp-checkset-item"><input type="checkbox" value="PK"> 包材</label>
+            <label class="erp-checkset-item"><input type="checkbox" value="PROC"> 加工廠</label>
+            <label class="erp-checkset-item"><input type="checkbox" value="LOG"> 物流/倉儲</label>
+            <label class="erp-checkset-item"><input type="checkbox" value="OTHER"> 其他</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>可用流程(可複選) *</label>
+        <div class="erp-multiselect" data-ms="s_flow">
+          <button type="button" class="erp-multiselect-btn" id="s_flow_btn" aria-haspopup="listbox" aria-expanded="false">
+            <span id="s_flow_text" class="erp-multiselect-text">請選擇</span>
+            <span class="erp-multiselect-caret" aria-hidden="true">▾</span>
+          </button>
+          <div id="s_flow_group" class="erp-multiselect-panel" role="listbox" aria-multiselectable="true">
+            <label class="erp-checkset-item"><input type="checkbox" value="PO"> 採購</label>
+            <label class="erp-checkset-item"><input type="checkbox" value="IMPORT"> 進口</label>
+            <label class="erp-checkset-item"><input type="checkbox" value="OUTSOURCE"> 委外加工</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>狀態</label>
+        <div class="erp-status-select-row">
+          <select id="s_status">
+            <option value="ACTIVE">ACTIVE（使用中）</option>
+            <option value="INACTIVE">INACTIVE（停用）</option>
+          </select>
+          <span id="s_status_lamp" class="status-lamp status-lamp--solo status-lamp--active" role="img" title="ACTIVE（使用中）" aria-label="ACTIVE（使用中）"><span class="status-lamp-dot" aria-hidden="true"></span></span>
+        </div>
+      </div>
+
+      <div class="form-group form-group-span-2">
+        <label>備註</label>
+        <input type="text" id="s_remark">
+      </div>
+
+    </div>
+
+    <div class="button-group">
+      <button class="btn-primary" id="s_create_btn" onclick="createSupplier(this)">建立</button>
+      <button class="btn-secondary" id="s_update_btn" onclick="updateSupplier(this)">更新</button>
+      <button class="btn-secondary" onclick="clearSupplierForm()">清除</button>
+      <button class="btn-secondary" onclick="openLogs('supplier', document.getElementById('s_id')?.value || '', 'master')">Log</button>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ===== 列表 ===== -->
+<div class="card">
+
+  <div class="card-header card-header-flex">
+    <span>
+      供應商列表
+      <button type="button" class="btn-sheet" onclick="openSheetLink('supplier')" title="在 Google Sheets 開啟對應工作表">Sheet</button>
+    </span>
+    <span data-help="supplierList"></span>
+  </div>
+
+  <div class="card-body">
+
+    <!-- 搜尋 -->
+    <div class="search-toolbar">
+      <input type="text" id="search_supplier_keyword" placeholder="關鍵字（ID／名稱／聯絡／電話／Email／備註）" style="min-width:360px;" title="比對供應商ID、名稱、聯絡人、電話、Email、備註">
+      <select id="search_supplier_status">
+        <option value="">全部狀態</option>
+        <option value="ACTIVE">ACTIVE（使用中）</option>
+        <option value="INACTIVE">INACTIVE（停用）</option>
+      </select>
+      <button class="btn-secondary" onclick="resetSupplierSearch()">重設</button>
+    </div>
+
+    <br>
+
+    <div class="table-wrapper table-wrapper-master">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th onclick="sortSuppliers('supplier_id')">ID <span id="sort-supplierId"></span></th>
+            <th onclick="sortSuppliers('supplier_name')">名稱 <span id="sort-supplierName"></span></th>
+            <th onclick="sortSuppliers('supplier_type')">類型</th>
+            <th onclick="sortSuppliers('supplier_flow')">流程</th>
+            <th onclick="sortSuppliers('contact_person')">聯絡人 <span id="sort-contactPerson"></span></th>
+            <th onclick="sortSuppliers('phone')">電話 <span id="sort-phone"></span></th>
+            <th class="col-status" onclick="sortSuppliers('status')">狀態 <span id="sort-status"></span></th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="supplierTableBody"></tbody>
+      </table>
+    </div>
+
+  </div>
+</div>

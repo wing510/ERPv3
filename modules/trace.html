@@ -1,0 +1,83 @@
+<div class="card">
+  <div class="card-header card-header-flex">
+    <span>
+      區塊 1：查貨（Lot）— 批次追溯
+      <button type="button" class="btn-sheet" onclick="openSheetLink('lot_relation')" title="批次關聯（lot_relation）">Sheet</button>
+    </span>
+    <span data-help="traceMain"></span>
+  </div>
+
+  <div class="card-body">
+    <div style="font-size:12px;color:#64748b;margin-bottom:10px;line-height:1.6;">
+      適用情境：想知道「這批貨從哪裡來、後來出到哪張出貨/哪個客戶」。
+    </div>
+    <div class="search-toolbar" style="margin-bottom:16px;">
+      <input type="text" id="trace_lot_id" class="search-keyword-wide" placeholder="輸入 Lot ID（例如：LOT-20260413-0001）" title="輸入 Lot ID 後按「查詢」">
+      <button class="btn-primary" id="trace_run_btn" onclick="runTrace()">查詢</button>
+      <span id="traceRunHint" style="font-size:12px;color:#64748b;font-weight:600;display:none;white-space:nowrap;">查詢中…</span>
+      <button class="btn-secondary" onclick="resetTrace()">重設</button>
+      <button class="btn-secondary" onclick="openLogs('lot', document.getElementById('trace_lot_id')?.value || '', 'inventory')">Log</button>
+    </div>
+    <div id="traceLotTxLinks" style="display:none;margin:-6px 0 14px 0;"></div>
+
+    <div class="form-grid-4">
+      <div class="form-group full-width">
+        <label>批次摘要</label>
+        <pre id="traceSummary" class="logs-pre" style="max-height:220px;"></pre>
+      </div>
+
+      <div class="form-group full-width">
+        <label>向上追（來源）</label>
+        <pre id="traceUp" class="logs-pre" style="max-height:260px;"></pre>
+      </div>
+
+      <div class="form-group full-width">
+        <label style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span>向下追（流向）</span>
+          <span style="font-size:12px;color:#64748b;font-weight:600;">篩選</span>
+          <select id="trace_down_ship_filter" class="search-status" style="width:auto;min-width:132px;" title="流向篩選（出貨/作廢）">
+            <option value="ALL" selected>全部</option>
+            <option value="POSTED">只看已出貨</option>
+            <option value="CANCELLED">只看已作廢</option>
+          </select>
+        </label>
+        <pre id="traceDown" class="logs-pre" style="max-height:260px;"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header card-header-flex">
+    <span>區塊 2：查事件（一次操作/過帳）— 交易鏈（transaction_id）</span>
+    <span data-help="traceTx"></span>
+  </div>
+
+  <div class="card-body">
+    <div style="font-size:12px;color:#64748b;margin-bottom:10px;line-height:1.6;">
+      適用情境：想知道「這一次操作/過帳做過什麼」（可能是採購收貨、進口收貨、庫存異動、出貨、作廢回沖、補寄、再出貨…）。
+    </div>
+    <div class="search-toolbar" style="margin-bottom:12px;">
+      <input type="text" id="trace_tx_id" class="search-keyword-wide" placeholder="輸入 TX 或單號（TX/SO/SHIP/GR/IR/PO/IMPORT/PROC/MV-...）" title="可直接輸入 TX-...；或輸入單號（如 SHIP-.../SO-...），系統會自動換成 transaction_id 再查詢">
+      <button class="btn-primary" id="trace_tx_run_btn" onclick="runTraceTx()">查詢</button>
+      <span id="traceTxRunHint" style="font-size:12px;color:#64748b;font-weight:600;display:none;white-space:nowrap;">查詢中…</span>
+      <button class="btn-secondary" onclick="resetTraceTx()">清除</button>
+      <button class="btn-secondary" type="button" onclick="extendTraceTxSelected_()">延伸</button>
+      <select id="trace_tx_extend_depth" class="search-status" style="width:auto;min-width:92px;" title="延伸層數（層數越多越慢、畫面越長）">
+        <option value="1" selected>上1層</option>
+        <option value="3">上3層</option>
+        <option value="6">上6層</option>
+      </select>
+      <button class="btn-secondary" type="button" onclick="toggleTraceTxRaw_()">原始資料</button>
+    </div>
+
+    <div class="form-grid-4">
+      <div class="form-group full-width">
+        <label>查詢結果（整理版）</label>
+        <div id="traceTxLinks" style="display:none;margin:6px 0 10px 0;"></div>
+        <pre id="traceTxResult" class="logs-pre" style="max-height:320px;"></pre>
+        <pre id="traceTxRawResult" class="logs-pre" style="max-height:320px;display:none;margin-top:10px;"></pre>
+      </div>
+    </div>
+  </div>
+</div>

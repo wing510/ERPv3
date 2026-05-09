@@ -1,0 +1,165 @@
+<!-- ===== 編輯卡片 ===== -->
+<div class="card">
+
+  <div class="card-header card-header-flex">
+    <span>
+      Customers 客戶
+      <button type="button" class="btn-sheet" onclick="openSheetLink('customer')" title="在 Google Sheets 開啟對應工作表">Sheet</button>
+    </span>
+    <span data-help="customerEdit"></span>
+  </div>
+
+  <div class="card-body">
+
+    <div class="form-grid-4">
+
+      <div class="form-group">
+        <label>客戶ID *</label>
+        <input type="text" id="c_id" placeholder="自動產生ID">
+      </div>
+
+      <div class="form-group">
+        <label>客戶名稱 *</label>
+        <input type="text" id="c_name">
+      </div>
+
+      <div class="form-group">
+        <label>分類 *</label>
+        <select id="c_category">
+          <option value="">請選擇</option>
+          <option value="經銷">經銷</option>
+          <option value="門市">門市</option>
+          <option value="零售">零售</option>
+          <option value="KOL">KOL</option>
+          <option value="公關">公關</option>
+          <option value="企業">企業</option>
+          <option value="電商">電商</option>
+          <option value="其他">其他</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>聯絡人</label>
+        <input type="text" id="c_contact">
+      </div>
+
+      <div class="form-group">
+        <label>電話</label>
+        <input type="text" id="c_phone">
+      </div>
+
+      <div class="form-group">
+        <label>Email</label>
+        <input type="text" id="c_email">
+      </div>
+
+      <div class="form-group">
+        <label>地址</label>
+        <input type="text" id="c_address">
+      </div>
+
+      <div class="form-group">
+        <label>國家</label>
+        <select id="c_country">
+          <option value="">請選擇</option>
+          <option value="台灣">台灣</option>
+          <option value="中國">中國</option>
+          <option value="日本">日本</option>
+          <option value="韓國">韓國</option>
+          <option value="新加坡">新加坡</option>
+          <option value="馬來西亞">馬來西亞</option>
+          <option value="越南">越南</option>
+          <option value="印尼">印尼</option>
+          <option value="泰國">泰國</option>
+          <option value="美國">美國</option>
+          <option value="加拿大">加拿大</option>
+          <option value="英國">英國</option>
+          <option value="德國">德國</option>
+          <option value="澳洲">澳洲</option>
+          <option value="其他">其他</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>狀態</label>
+        <div class="erp-status-select-row">
+          <select id="c_status">
+            <option value="ACTIVE">ACTIVE（使用中）</option>
+            <option value="INACTIVE">INACTIVE（停用）</option>
+          </select>
+          <span id="c_status_lamp" class="status-lamp status-lamp--solo status-lamp--active" role="img" title="ACTIVE（使用中）" aria-label="ACTIVE（使用中）"><span class="status-lamp-dot" aria-hidden="true"></span></span>
+        </div>
+      </div>
+
+      <div class="form-group form-group-span-2">
+        <label>備註</label>
+        <input type="text" id="c_remark">
+      </div>
+
+    </div>
+
+    <div class="button-group">
+      <button class="btn-primary" id="c_create_btn" onclick="createCustomer(this)">建立</button>
+      <button class="btn-secondary" id="c_update_btn" onclick="updateCustomer(this)">更新</button>
+      <button class="btn-secondary" onclick="clearCustomerForm()">清除</button>
+      <button class="btn-secondary" onclick="openLogs('customer', document.getElementById('c_id')?.value || '', 'master')">Log</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ===== 列表 ===== -->
+<div class="card">
+
+  <div class="card-header card-header-flex">
+    <span>
+      客戶列表
+      <button type="button" class="btn-sheet" onclick="openSheetLink('customer')" title="在 Google Sheets 開啟對應工作表">Sheet</button>
+    </span>
+    <span data-help="customerList"></span>
+  </div>
+
+  <div class="card-body">
+
+    <div class="search-toolbar">
+      <input type="text" id="search_customer_keyword" placeholder="關鍵字（ID／名稱／分類／聯絡／電話／Email／備註）" style="min-width:360px;" title="比對客戶ID、名稱、分類、聯絡人、電話、Email、備註">
+      <select id="search_customer_category">
+        <option value="">全部分類</option>
+        <option value="經銷">經銷</option>
+        <option value="門市">門市</option>
+        <option value="零售">零售</option>
+        <option value="KOL">KOL</option>
+        <option value="公關">公關</option>
+        <option value="企業">企業</option>
+        <option value="電商">電商</option>
+        <option value="其他">其他</option>
+      </select>
+      <select id="search_customer_status">
+        <option value="">全部狀態</option>
+        <option value="ACTIVE">ACTIVE（使用中）</option>
+        <option value="INACTIVE">INACTIVE（停用）</option>
+      </select>
+      <button class="btn-secondary" onclick="resetCustomerSearch()">重設</button>
+    </div>
+
+    <br>
+
+    <div class="table-wrapper table-wrapper-master">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th onclick="sortCustomers('customer_id')">ID <span id="sort-customerId"></span></th>
+            <th onclick="sortCustomers('customer_name')">名稱 <span id="sort-customerName"></span></th>
+            <th onclick="sortCustomers('category')">分類 <span id="sort-category"></span></th>
+            <th onclick="sortCustomers('contact_person')">聯絡人 <span id="sort-contactPerson"></span></th>
+            <th onclick="sortCustomers('phone')">電話 <span id="sort-phone"></span></th>
+            <th class="col-status" onclick="sortCustomers('status')">狀態 <span id="sort-status"></span></th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="customerTableBody"></tbody>
+      </table>
+    </div>
+
+  </div>
+</div>

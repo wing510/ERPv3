@@ -1,0 +1,163 @@
+<!-- ===== 採購單主檔 ===== -->
+<div class="card">
+  <div class="card-header card-header-flex">
+    <span>
+      Purchase Orders 採購單
+      <button type="button" class="btn-sheet" onclick="openSheetLink('purchase_order')" title="在 Google Sheets 開啟對應工作表">Sheet</button>
+      <span id="poFlowHint" style="font-size:12px;color:#64748b;font-weight:500;margin-left:10px;">採購：新單 · 填主檔與明細後按「建立」開單</span>
+      <span id="poReceiptState" style="font-size:12px;color:#64748b;font-weight:500;margin-left:10px;">收貨：未載入 · 請先 Load 採購單</span>
+    </span>
+    <span data-help="purchaseHeader"></span>
+  </div>
+
+  <div class="card-body">
+    <div class="form-grid-4">
+
+      <div class="form-group">
+        <label>採購單號 (PO ID) *</label>
+        <input type="text" id="po_id" readonly placeholder="自動產生ID">
+      </div>
+
+      <div class="form-group">
+        <label>供應商 *</label>
+        <select id="po_supplier_id"></select>
+      </div>
+
+      <div class="form-group">
+        <label>下單日期 *</label>
+        <input type="date" id="po_order_date">
+      </div>
+
+      <div class="form-group">
+        <label>預計到貨日</label>
+        <input type="date" id="po_expected_arrival_date">
+      </div>
+
+      <div class="form-group">
+        <label>文件連結</label>
+        <input type="text" id="po_document_link" placeholder="URL 或檔案連結">
+      </div>
+
+      <div class="form-group full-width">
+        <label>備註</label>
+        <input type="text" id="po_remark" placeholder="例如：交期、對帳備註、特殊要求">
+      </div>
+
+    </div>
+
+    <div class="button-group">
+      <button class="btn-secondary" id="po_update_btn" onclick="togglePOHeaderEditSave_(this)">編輯主檔</button>
+      <button class="btn-secondary" id="po_header_cancel_edit_btn" type="button" onclick="cancelPOHeaderEdit_()" style="display:none;">取消編輯</button>
+      <button class="btn-secondary" id="po_save_remark_btn" type="button" onclick="savePOHeaderRemarkOnly_(this)">儲存備註</button>
+      <button class="btn-secondary" onclick="resetPOForm()">清除</button>
+      <button class="btn-secondary" id="po_cancel_btn" onclick="cancelPurchaseOrder(this)">作廢</button>
+      <button class="btn-secondary" onclick="openLogs('purchase_order', document.getElementById('po_id')?.value || '', 'inbound')">Log</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 採購明細 ===== -->
+<div class="card">
+  <div class="card-header card-header-flex">
+    <span>
+      採購明細（品項）
+      <button type="button" class="btn-sheet" onclick="openSheetLink('purchase_order_item')" title="在 Google Sheets 開啟對應工作表">Sheet</button>
+    </span>
+    <span data-help="purchaseItems"></span>
+  </div>
+  <div class="card-body">
+
+    <div class="form-grid-4">
+      <div class="form-group">
+        <label>產品（規格）*</label>
+        <select id="po_item_product_id" onchange="onSelectPOItemProduct()"></select>
+      </div>
+
+      <div class="form-group">
+        <label>訂購數量 *</label>
+        <div class="erp-input-with-suffix">
+          <input type="number" id="po_item_order_qty" min="0" step="1">
+          <span id="po_item_unit_suffix" class="erp-input-suffix"></span>
+        </div>
+        <input type="hidden" id="po_item_unit" value="">
+      </div>
+
+      <div class="form-group full-width">
+        <label>備註</label>
+        <input type="text" id="po_item_remark" placeholder="例如：包材、規格、交期備註">
+      </div>
+    </div>
+
+    <div class="button-group">
+      <button class="btn-primary" id="po_add_item_btn" onclick="addPOItemDraft()">新增品項</button>
+      <button type="button" id="po_save_line_remark_btn" class="btn-secondary" onclick="updateSelectedPOItemRemark(this)">儲存備註</button>
+    </div>
+
+    <br>
+
+    <div class="table-wrapper" style="height:220px;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>項次</th>
+            <th>產品（規格）</th>
+            <th>數量</th>
+            <th>狀態</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="poItemsBody"></tbody>
+      </table>
+    </div>
+
+    <div class="button-group" id="poItemsCommitGroup" style="margin-top:12px;">
+      <button class="btn-primary" id="po_create_btn" onclick="createPurchaseOrder(this)">建立</button>
+      <button class="btn-secondary" id="po_items_save_btn" onclick="togglePOItemsEditSave_(this)">編輯明細</button>
+      <button class="btn-secondary" id="po_items_cancel_edit_btn" type="button" onclick="cancelPOItemsEdit_()" style="display:none;">取消編輯</button>
+      <button type="button" class="btn-secondary" onclick="scrollToEditorTop()">回到上方</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 採購單列表 ===== -->
+<div class="card">
+  <div class="card-header card-header-flex">
+    <span>
+      採購單列表
+      <button type="button" class="btn-sheet" onclick="openSheetLink('purchase_order')" title="在 Google Sheets 開啟對應工作表">Sheet</button>
+    </span>
+    <span data-help="purchaseList"></span>
+  </div>
+  <div class="card-body">
+    <div class="search-toolbar">
+      <input type="text" id="search_po_keyword" placeholder="關鍵字（採購單號／供應商）" style="min-width:260px;" title="比對採購單號、供應商ID、供應商名稱">
+      <select id="search_po_status">
+        <option value="">全部狀態</option>
+        <option value="OPEN">OPEN（未收貨）</option>
+        <option value="PARTIAL">PARTIAL（部分收貨）</option>
+        <option value="CLOSED">CLOSED（已收完）</option>
+        <option value="CANCELLED">CANCELLED（已作廢）</option>
+      </select>
+      <button class="btn-secondary" onclick="resetPurchaseSearch()">重設</button>
+    </div>
+
+    <br>
+
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th onclick="sortPurchaseOrders('po_id')">採購單號</th>
+            <th onclick="sortPurchaseOrders('supplier_id')">供應商</th>
+            <th onclick="sortPurchaseOrders('order_date')">下單日期</th>
+            <th onclick="sortPurchaseOrders('expected_arrival_date')">預計到貨日</th>
+            <th onclick="sortPurchaseOrders('status')">狀態</th>
+            <th onclick="sortPurchaseOrders('document_link')">文件</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="poTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>

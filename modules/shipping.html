@@ -1,0 +1,259 @@
+<!-- ===== Shipment 出貨管理 ===== -->
+<div class="card">
+  <div class="card-header card-header-flex">
+    <span>
+      Shipment 出貨管理
+      <button type="button" class="btn-sheet" onclick="openSheetLink('shipment')" title="在 Google Sheets 開啟對應工作表">Sheet</button>
+      <span id="shipStatusHint" style="font-size:12px;color:#64748b;font-weight:500;margin-left:10px;">出貨：新單 · 填主檔與明細後按「建立並過帳出貨」扣庫</span>
+      <span id="shipInvState" style="font-size:12px;color:#64748b;font-weight:500;margin-left:10px;">扣庫：未過帳 · 過帳後才扣庫</span>
+    </span>
+    <span data-help="shippingHeader"></span>
+  </div>
+
+  <div class="card-body">
+    <div class="form-grid-4">
+      <div class="form-group">
+        <label>出貨單ID *</label>
+        <input type="text" id="ship_id" placeholder="自動產生ID">
+      </div>
+
+      <div class="form-group" style="grid-column:span 3;">
+        <label>銷售單 *</label>
+        <select id="ship_so_id" onchange="onSelectShipSO()"></select>
+        <input type="hidden" id="ship_customer_id">
+      </div>
+
+      <div class="form-group">
+        <label>出貨日期 *</label>
+        <input type="date" id="ship_date">
+      </div>
+
+      <div class="form-group">
+        <label>出貨人員 *</label>
+        <select id="ship_shipper_id"></select>
+      </div>
+
+      <div class="form-group" style="grid-column:span 2;">
+        <label>備註</label>
+        <input type="text" id="ship_remark">
+      </div>
+    </div>
+
+    <div class="button-group">
+      <button class="btn-secondary" id="ship_save_remark_btn" type="button" onclick="saveShipHeaderRemarkOnly_(this)">儲存備註</button>
+      <button class="btn-secondary" onclick="resetShipForm()">清除</button>
+      <button class="btn-secondary" type="button" onclick="downloadShipmentPdf()">下載PDF</button>
+      <button class="btn-secondary" id="ship_cancel_btn" onclick="cancelShipment(this)">作廢出貨單（反沖庫存）</button>
+      <button class="btn-secondary" onclick="openLogs('shipment', document.getElementById('ship_id')?.value || '', 'shipment')">Log</button>
+    </div>
+  </div>
+</div>
+
+<style>
+.ship-lot-modal { position:fixed; inset:0; z-index:9000; display:flex; align-items:center; justify-content:center; padding:16px; }
+.ship-lot-modal-overlay { position:absolute; inset:0; background:rgba(0,0,0,0.4); }
+.ship-lot-modal-dialog { position:relative; background:#fff; border-radius:10px; box-shadow:0 8px 32px rgba(0,0,0,0.2); width:100%; max-width:980px; padding:18px; }
+.ship-lot-picker-head { position:relative; padding-right:40px; margin-bottom:12px; }
+.ship-lot-picker-head h3 { margin:0; font-size:18px; color:#1e293b; line-height:1.35; padding-right:8px; }
+.ship-lot-picker-x {
+  position:absolute; top:-4px; right:-6px;
+  width:36px; height:36px;
+  border:none; background:transparent;
+  font-size:26px; line-height:1; color:#64748b;
+  cursor:pointer; border-radius:8px;
+  display:flex; align-items:center; justify-content:center;
+  padding:0;
+}
+.ship-lot-picker-x:hover { background:#f1f5f9; color:#0f172a; }
+.ship-lot-picker-toolbar {
+  display:flex; align-items:center; flex-wrap:wrap;
+  gap:10px 12px;
+  margin-bottom:10px;
+}
+/* 下拉與核取方塊緊貼成一群 */
+.ship-lot-picker-controls {
+  display:inline-flex; align-items:center; flex-wrap:nowrap;
+  gap:12px;
+}
+.ship-lot-picker-controls select { margin:0; }
+/* Lot Picker：小型核取方塊，與工具列對齊 */
+.ship-lot-picker-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin: 0;
+  padding: 2px 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+  line-height: 1;
+  user-select: none;
+  cursor: pointer;
+}
+.ship-lot-picker-check input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  padding: 0;
+  flex-shrink: 0;
+  accent-color: #64748b;
+  cursor: pointer;
+  vertical-align: middle;
+}
+</style>
+<!-- ===== 出貨明細（指定批次） ===== -->
+<div class="card">
+  <div class="card-header card-header-flex">
+    <span>
+      出貨明細
+      <button type="button" class="btn-sheet" onclick="openSheetLink('shipment_item')" title="在 Google Sheets 開啟對應工作表">Sheet</button>
+    </span>
+    <span data-help="shippingItems"></span>
+  </div>
+  <div class="card-body">
+    <div class="form-grid-4">
+      <div class="form-group">
+        <label>銷售品項 *</label>
+        <select id="ship_so_item_id" onchange="onSelectShipSOItem()"></select>
+      </div>
+
+      <div class="form-group" style="grid-column:span 3;">
+        <label>Lot *</label>
+        <input type="text" id="ship_lot_display" readonly placeholder="請在下方按「選擇 Lot」帶入">
+        <input type="hidden" id="ship_lot_id">
+      </div>
+
+      <div class="form-group">
+        <label>出貨數量 *</label>
+        <div class="erp-input-with-suffix">
+          <input type="number" id="ship_qty" min="0" step="0.01">
+          <span id="ship_qty_unit_suffix" class="erp-input-suffix"></span>
+        </div>
+        <input type="hidden" id="ship_line_unit" value="">
+      </div>
+
+      <div class="form-group" style="grid-column:span 3;">
+        <label>備註</label>
+        <input type="text" id="ship_item_remark">
+      </div>
+    </div>
+
+    <div class="button-group">
+      <button class="btn-primary" id="ship_add_item_btn" type="button" onclick="addShipItemDraft()">新增明細</button>
+      <button type="button" id="ship_pick_lot_btn" class="btn-secondary" onclick="openShipLotPicker()">選擇 Lot</button>
+      <button type="button" id="ship_save_line_remark_btn" class="btn-secondary" onclick="updateSelectedShipItemRemark(this)">儲存備註</button>
+      <label style="display:inline-flex;align-items:center;gap:6px;color:#475569;font-size:13px;user-select:none;margin-left:6px;">
+        <input type="checkbox" id="ship_auto_alloc" checked onchange="shipUpdateAllocModeUI_()">
+        Lot 自動分配（FEFO）
+      </label>
+    </div>
+
+    <br>
+
+    <div class="table-wrapper" style="height:220px;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>項次</th>
+            <th>Lot/產品（規格）</th>
+            <th>倉別</th>
+            <th>訂購</th>
+            <th>已出</th>
+            <th>未出</th>
+            <th>本次</th>
+            <th>狀態</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="shipItemsBody"></tbody>
+      </table>
+    </div>
+
+    <div class="button-group" id="shipPostButtonGroup" style="margin-top:10px;">
+      <button class="btn-primary" id="ship_post_btn" onclick="postShipment(this)">建立並過帳出貨（扣庫）</button>
+      <button type="button" class="btn-secondary" onclick="scrollToEditorTop()">回到上方</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Lot Picker（比照委外投料） ===== -->
+<div id="shipLotPickerModal" class="ship-lot-modal" style="display:none;" role="dialog" aria-modal="true">
+  <div class="ship-lot-modal-overlay" onclick="closeShipLotPicker()"></div>
+  <div class="ship-lot-modal-dialog">
+    <div class="ship-lot-picker-head">
+      <h3 id="ship_lot_picker_title">選擇 Lot</h3>
+      <button type="button" class="ship-lot-picker-x" onclick="closeShipLotPicker()" title="關閉" aria-label="關閉">×</button>
+    </div>
+    <div class="ship-lot-picker-toolbar">
+      <input type="text" id="ship_lot_picker_keyword" placeholder="搜尋 Lot ID / 產品名稱 / 倉別" style="min-width:280px;">
+      <div class="ship-lot-picker-controls">
+        <select id="ship_lot_picker_viewmode">
+          <option value="flat">flat（一般清單）</option>
+          <option value="group_source">group_source（依來源分組）</option>
+        </select>
+        <label class="ship-lot-picker-check" for="ship_show_ineligible_lots">
+          <input type="checkbox" id="ship_show_ineligible_lots">
+          <span>顯示不可選 Lot</span>
+        </label>
+      </div>
+    </div>
+    <div class="table-wrapper" style="max-height:360px;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Lot ID</th>
+            <th>產品名稱</th>
+            <th>倉別</th>
+            <th>可用量</th>
+            <th>效期</th>
+            <th>說明</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="shipLotPickBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 出貨單列表 ===== -->
+<div class="card">
+  <div class="card-header card-header-flex">
+    <span>
+      出貨單列表
+      <button type="button" class="btn-sheet" onclick="openSheetLink('shipment')" title="在 Google Sheets 開啟對應工作表">Sheet</button>
+    </span>
+    <span data-help="shippingList"></span>
+  </div>
+  <div class="card-body">
+    <div class="search-toolbar" style="margin-bottom:12px;">
+      <input type="text" id="ship_search_keyword" placeholder="關鍵字（出貨單／客戶／銷售單）" style="min-width:260px;" title="比對出貨單ID、客戶ID／名稱、銷售單ID">
+      <select id="ship_search_status">
+        <option value="">全部狀態</option>
+        <option value="POSTED">POSTED（已過帳）</option>
+        <option value="CANCELLED">CANCELLED（已取消）</option>
+        <option value="OPEN">OPEN（開單中）</option>
+      </select>
+      <button class="btn-secondary" onclick="resetShipmentSearch()">重設</button>
+    </div>
+
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>出貨單ID</th>
+            <th>銷售單</th>
+            <th>客戶</th>
+            <th>銷售</th>
+            <th>出貨</th>
+            <th>出貨日期</th>
+            <th>狀態</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="shipTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+

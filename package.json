@@ -1,0 +1,15 @@
+{
+  "name": "erp-v3",
+  "private": true,
+  "version": "3.3.0",
+  "description": "ERP v3 front-end + automation smoke tests",
+  "scripts": {
+    "test:smoke": "playwright test -c playwright.config.ts --reporter=line",
+    "test:smoke:ui": "playwright test -c playwright.config.ts --reporter=html",
+    "test:smoke:debug": "PWDEBUG=1 playwright test -c playwright.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}
+

@@ -1,0 +1,1877 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>ERP v3.3 - DINGLI 鼎力</title>
+
+<style>
+body{
+  margin:0;
+  font-family:"Segoe UI", Roboto, sans-serif;
+  display:flex;
+  height:100vh;
+  background:#f4f6f9;
+}
+
+/* ===== Sidebar ===== */
+.sidebar{
+  box-sizing:border-box;
+  width:268px;
+  min-width:268px;
+  flex-shrink:0;
+  background:#1f2d3d;
+  color:white;
+  padding:18px 16px;
+  overflow-y:auto;
+}
+
+.sidebar a{
+  display:block;
+  color:#cfd8e3;
+  text-decoration:none;
+  padding:6px 0;
+  font-size:14px;
+  line-height:1.45;
+  word-break:keep-all;
+  overflow-wrap:anywhere;
+}
+
+.sidebar a:hover{color:white;}
+
+.section-title{
+  margin-top:18px;
+  font-size:12px;
+  color:#7fa6d1;
+  text-transform:uppercase;
+}
+
+/* ===== Main ===== */
+.main{
+  flex:1;
+  min-width:0; /* 避免內部寬表格／工具列把整頁橫向撐出捲軸 */
+  display:flex;
+  flex-direction:column;
+}
+
+.topbar{
+  position:relative;
+  z-index:10020;
+  background:white;
+  padding:15px 25px;
+  border-bottom:1px solid #e0e0e0;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+}
+.topbar-left{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+  flex:1 1 auto;
+}
+.topbar-site-title{
+  font-size:15px;
+  font-weight:500;
+  color:#1e293b;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.topbar-right{
+  display:flex;
+  gap:12px;
+  align-items:center;
+  flex-shrink:0;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+.topbar-user-id{
+  font-size:13px;
+  color:#334155;
+  max-width:min(240px, 40vw);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+/* 小螢幕抽屜：漢堡鈕（桌面隱藏） */
+.sidebar-toggle{
+  display:none;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  gap:5px;
+  width:40px;
+  height:40px;
+  padding:0;
+  margin:0;
+  border:none;
+  background:transparent;
+  cursor:pointer;
+  border-radius:8px;
+  flex-shrink:0;
+  -webkit-tap-highlight-color:transparent;
+}
+.sidebar-toggle:focus-visible{
+  outline:2px solid #2563eb;
+  outline-offset:2px;
+}
+.sidebar-toggle-bar{
+  display:block;
+  width:22px;
+  height:2px;
+  background:#1e293b;
+  border-radius:1px;
+}
+.sidebar-backdrop{
+  display:none;
+}
+
+#content{
+  padding:30px;
+  overflow-y:auto;
+  min-width:0;
+}
+
+/* ===== Card ===== */
+.card{
+  background:white;
+  border-radius:8px;
+  box-shadow:0 2px 6px rgba(0,0,0,0.06);
+  margin-bottom:24px;
+  max-width:100%;
+  min-width:0;
+}
+
+.card-header{
+  padding:16px 22px;
+  border-bottom:1px solid #eee;
+  font-weight:600;
+  background:#fafbfc;
+}
+
+.card-body{
+  padding:20px;
+  min-width:0;
+}
+
+/* ===== 表單：大螢幕 4 欄、≤1200px 兩欄、≤768px 一欄一行（小螢幕） ===== */
+.form-grid-4{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:20px;
+}
+
+.form-group{
+  display:flex;
+  flex-direction:column;
+}
+
+.form-group.full-width{
+  grid-column:span 4;
+}
+
+/* 四欄時佔 3 欄（常與左側 1 欄並排）；≤1200px 改跨滿 2 欄，避免與兩欄斷點衝突 */
+.form-group.form-group-span-3{
+  grid-column:span 3;
+}
+
+/* 四欄時佔 2 欄（例如 Email 欄位加寬）；≤1200px 兩欄時跨滿一列 */
+.form-group.form-group-span-2{
+  grid-column:span 2;
+}
+
+@media (max-width:1200px){
+  .form-grid-4{ grid-template-columns:repeat(2,1fr); }
+  .form-group.full-width{ grid-column:span 2; }
+  .form-group.form-group-span-3{ grid-column:span 2; }
+  .form-group.form-group-span-2{ grid-column:span 2; }
+}
+
+@media (max-width:768px){
+  .form-grid-4{
+    grid-template-columns:1fr;
+    gap:14px;
+  }
+  .form-group.full-width,
+  .form-group.form-group-span-3{
+    grid-column:span 1;
+  }
+}
+
+label{
+  font-size:13px;
+  margin-bottom:6px;
+}
+
+/* a11y：視覺隱藏但保留給螢幕閱讀器 */
+.sr-only{
+  position:absolute !important;
+  width:1px !important;
+  height:1px !important;
+  padding:0 !important;
+  margin:-1px !important;
+  overflow:hidden !important;
+  clip:rect(0,0,0,0) !important;
+  white-space:nowrap !important;
+  border:0 !important;
+}
+
+input,select{
+  height:36px;
+  padding:0 10px;
+  border:1px solid #ddd;
+  border-radius:6px;
+}
+
+/* checkbox 群組（供應商類型/流程等）：不影響 input/select 樣式 */
+.erp-checkset{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px 10px;
+  padding:8px 10px;
+  border:1px solid #ddd;
+  border-radius:6px;
+  background:#fff;
+  box-sizing:border-box;
+  min-height:36px;
+}
+.erp-checkset-item{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin:0;
+  font-size:13px;
+  color:#0f172a;
+  line-height:1.2;
+  user-select:none;
+}
+.erp-checkset-item input[type="checkbox"]{
+  width:14px;
+  height:14px;
+  margin:0;
+}
+
+/* 下拉式多選（點開勾選） */
+.erp-multiselect{
+  position:relative;
+}
+.erp-multiselect-btn{
+  width:100%;
+  height:36px;
+  padding:0 10px;
+  border:1px solid #ddd;
+  border-radius:6px;
+  background:#fff;
+  color:#0f172a;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  box-sizing:border-box;
+}
+.erp-multiselect-text{
+  flex:1 1 auto;
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  text-align:left;
+  font-size:13px;
+}
+.erp-multiselect-caret{
+  flex:0 0 auto;
+  color:#64748b;
+  font-size:12px;
+}
+.erp-multiselect-panel{
+  display:none;
+  position:absolute;
+  left:0;
+  right:0;
+  top:calc(100% + 6px);
+  z-index:50;
+  max-height:220px;
+  overflow:auto;
+  padding:10px;
+  background:#fff;
+  border:1px solid #e2e8f0;
+  border-radius:8px;
+  box-shadow:0 10px 30px rgba(2,6,23,0.12);
+  box-sizing:border-box;
+}
+.erp-multiselect.is-open .erp-multiselect-panel{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px 10px;
+}
+.erp-multiselect.is-open .erp-multiselect-btn{
+  border-color:#94a3b8;
+  box-shadow:0 0 0 2px rgba(148,163,184,0.2);
+}
+
+/* 數量 + 單位：同一邊框內（採購／進口品項等），寬度與同列欄位一致 */
+.erp-input-with-suffix{
+  display:flex;
+  align-items:center;
+  box-sizing:border-box;
+  width:100%;
+  min-height:36px;
+  padding:0 0 0 10px;
+  border:1px solid #ddd;
+  border-radius:6px;
+  background:#fff;
+}
+.erp-input-with-suffix:focus-within{
+  border-color:#94a3b8;
+  box-shadow:0 0 0 2px rgba(148,163,184,0.2);
+}
+.erp-input-with-suffix input[type="number"]{
+  flex:1 1 auto;
+  min-width:0;
+  width:0;
+  height:34px;
+  padding:0 8px 0 0;
+  margin:0;
+  border:none;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+}
+.erp-input-with-suffix input[type="number"]:focus{
+  outline:none;
+}
+.erp-input-with-suffix .erp-input-suffix{
+  flex:0 0 auto;
+  padding:0 10px 0 0;
+  font-size:14px;
+  line-height:1.2;
+  white-space:nowrap;
+}
+
+.button-group{
+  margin-top:20px;
+  width:100%;
+  box-sizing:border-box;
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:10px;
+}
+/* 庫存異動：三顆主按鈕維持同一列（避免 flex-wrap 拆行） */
+.button-group.mv-button-group{
+  flex-wrap:nowrap;
+  gap:8px;
+}
+.button-group.mv-button-group .btn-primary{
+  margin-right:0;
+}
+@media (max-width:520px){
+  .button-group.mv-button-group{
+    flex-wrap:wrap;
+  }
+}
+
+/* 庫存異動：Lot／數量與按鈕同一列（按鈕在扣庫數量右側） */
+.mv-editor-row{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:flex-end;
+  gap:12px 16px;
+}
+.mv-editor-fields{
+  display:grid;
+  grid-template-columns:minmax(200px,1fr) minmax(140px,220px);
+  gap:20px;
+  flex:1 1 320px;
+  min-width:0;
+}
+.mv-editor-fields.mv-editor-fields-full{
+  flex: 1 1 100%;
+}
+.mv-editor-fields.mv-row-lot{
+  grid-template-columns: 1fr;
+}
+.mv-editor-fields.mv-row-meta{
+  /* 扣庫數量/轉倉到/用途/給誰：同列平均；備註改跨滿下一列 */
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+}
+@media (max-width:1200px){
+  .mv-editor-fields.mv-row-meta{
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.mv-editor-row .button-group{
+  margin-top:0;
+  flex:0 0 auto;
+}
+@media (max-width:900px){
+  .mv-editor-row{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .mv-editor-fields{
+    grid-template-columns:1fr 1fr;
+  }
+  .mv-editor-row .button-group{
+    margin-top:4px;
+  }
+}
+@media (max-width:768px){
+  .mv-editor-fields,
+  .mv-editor-fields.mv-row-meta{
+    grid-template-columns:1fr;
+  }
+}
+.save-hint-inline{
+  margin-left:auto;
+  padding:6px 12px;
+  background:#0ea5e9;
+  color:white;
+  border-radius:6px;
+  font-size:14px;
+}
+
+button{
+  height:36px;
+  padding:0 16px;
+  border:none;
+  border-radius:6px;
+  cursor:pointer;
+}
+
+.btn-primary{
+  background:#2563eb;
+  color:white;
+  margin-right:10px;
+}
+
+.btn-secondary{
+  background:#e5e7eb;
+}
+
+/* Disabled 按鈕：視覺上明確不可操作 */
+button:disabled,
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.btn-edit:disabled{
+  opacity:0.5;
+  cursor:not-allowed;
+  filter:grayscale(20%);
+}
+
+/* ===== 搜尋一行（允許換行，小螢幕不擠） ===== */
+.search-toolbar{
+  display:flex;
+  gap:12px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+.search-toolbar input,
+.search-toolbar select{
+  min-width:140px;
+  max-width:100%;
+}
+
+/* Lots／庫存異動列表：關鍵字欄拉長（可佔滿剩餘寬度） */
+.search-toolbar .search-keyword-wide{
+  flex:1 1 380px;
+  min-width:min(100%, 260px);
+  max-width:min(100%, 820px);
+  width:auto;
+  box-sizing:border-box;
+}
+
+/* ===== 表格（橫向可捲、重要欄位可固定） ===== */
+.table-wrapper{
+  height:420px;
+  overflow-x:auto;
+  overflow-y:auto;
+  border:1px solid #eee;
+  border-radius:6px;
+  -webkit-overflow-scrolling:touch;
+}
+/* Lots / 庫存異動：主列表區加高 */
+.table-wrapper.table-wrapper-tall{
+  height:560px;
+}
+/* 主檔列表（產品／客戶／供應商等）：加高並隨視窗高度延伸 */
+.table-wrapper.table-wrapper-master{
+  height:min(70vh, 860px);
+  min-height:480px;
+}
+/* 首欄橫向固定；z-index 需低於表頭，避免直向捲動時被資料列蓋住 */
+.data-table th:first-child,
+.data-table td:first-child{
+  position:sticky;
+  left:0;
+  white-space:nowrap;
+}
+.data-table tbody td:first-child{
+  background:inherit;
+  z-index:1;
+}
+.data-table tbody tr:hover td:first-child{ background:inherit; }
+/* 收貨明細：欄寬用百分比加總 100%，避免 rem/min-width 撐破容器出現橫向捲軸 */
+.table-wrapper.table-rcv-lines{
+  overflow-x:hidden;
+}
+.table-wrapper.table-rcv-lines .data-table{
+  table-layout:fixed;
+  width:100%;
+  max-width:100%;
+}
+.table-wrapper.table-rcv-lines .data-table th,
+.table-wrapper.table-rcv-lines .data-table td{
+  min-width:0;
+  vertical-align:middle;
+}
+.table-wrapper.table-rcv-lines .data-table col.rcv-col-item-no{ width:3%; }
+.table-wrapper.table-rcv-lines .data-table col.rcv-col-product{ width:32%; }
+.table-wrapper.table-rcv-lines .data-table col.rcv-col-wh{ width:12%; }
+.table-wrapper.table-rcv-lines .data-table col.rcv-col-num{ width:5%; }
+/* 表頭「本次收貨」 */
+.table-wrapper.table-rcv-lines .data-table col.rcv-col-qty-input{ width:12%; }
+.table-wrapper.table-rcv-lines .data-table col.rcv-col-date{ width:13%; }
+.table-wrapper.table-rcv-lines .data-table .erp-input-with-suffix input[type="number"]{
+  flex:0 1 auto;
+  min-width:0;
+  max-width:7ch;
+  width:auto;
+}
+.table-wrapper.table-rcv-lines .data-table th:nth-child(2),
+.table-wrapper.table-rcv-lines .data-table td:nth-child(2){
+  word-break:break-word;
+  overflow-wrap:anywhere;
+}
+.table-wrapper.table-rcv-lines .data-table th.col-rcv-item-no,
+.table-wrapper.table-rcv-lines .data-table td.col-rcv-item-no{
+  padding:12px 2px;
+  text-align:center;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  position:sticky;
+  left:0;
+  z-index:1;
+  box-sizing:border-box;
+}
+.table-wrapper.table-rcv-lines .data-table thead th.col-rcv-item-no{
+  /* 表頭：欄寬不足時允許「項次」自動換行，不要永遠變成 ... */
+  white-space:normal;
+  word-break:break-all;
+  overflow:visible;
+  text-overflow:clip;
+  line-height:1.1;
+}
+.table-wrapper.table-rcv-lines .data-table input[type="date"].rcv-input-date{
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  padding:4px 2px;
+  box-sizing:border-box;
+}
+.table-wrapper.table-rcv-lines .data-table td.col-rcv-qty-cell .erp-input-with-suffix{
+  width:auto;
+  max-width:100%;
+  display:inline-flex;
+}
+.table-wrapper.table-rcv-lines .data-table select.rcv-line-wh{
+  width:100%;
+  min-width:0;
+  box-sizing:border-box;
+}
+.rcv-lines-narrow-hint{
+  display:none;
+  margin:0 0 8px 0;
+  font-size:12px;
+  line-height:1.45;
+  color:#64748b;
+}
+.table-wrapper.table-rcv-lines .data-table thead .col-rcv-item-no{
+  z-index:3;
+  background:#f1f5f9;
+}
+.table-wrapper.table-rcv-lines .data-table tbody td.col-rcv-item-no{
+  background:#fff;
+}
+.table-wrapper.table-rcv-lines .data-table tbody tr:hover td.col-rcv-item-no{
+  background:inherit;
+}
+
+/* Lots 列表：11 欄固定比例、避免擠成直排表頭；窄螢幕橫向捲動 */
+.table-wrapper.table-lots-list{
+  overflow-x:hidden;
+}
+.table-wrapper.table-lots-list .data-table{
+  table-layout:fixed;
+  width:100%;
+  max-width:100%;
+}
+.table-wrapper.table-lots-list .data-table th,
+.table-wrapper.table-lots-list .data-table td{
+  min-width:0;
+  vertical-align:middle;
+}
+.table-wrapper.table-lots-list .data-table col.col-lots-id{ width:33%; }
+.table-wrapper.table-lots-list .data-table col.col-lots-wh{ width:9%; }
+.table-wrapper.table-lots-list .data-table col.col-lots-qty{ width:5%; }
+.table-wrapper.table-lots-list .data-table col.col-lots-av{ width:5%; }
+.table-wrapper.table-lots-list .data-table col.col-lots-mfg{ width:7%; }
+.table-wrapper.table-lots-list .data-table col.col-lots-exp{ width:7%; }
+.table-wrapper.table-lots-list .data-table col.col-lots-inv{ width:8%; }
+.table-wrapper.table-lots-list .data-table col.col-lots-qa{ width:8%; }
+.table-wrapper.table-lots-list .data-table col.col-lots-actions{ width:13%; }
+.table-wrapper.table-lots-list .data-table tbody td:first-child:not([colspan]){
+  word-break:break-word;
+  overflow-wrap:anywhere;
+}
+.table-wrapper.table-lots-list .data-table thead th:first-child{
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.table-wrapper.table-lots-list .data-table td:last-child{
+  white-space:normal;
+  line-height:1.35;
+}
+.table-wrapper.table-lots-list .data-table td:last-child .btn-secondary{
+  margin:2px 2px 2px 0;
+  vertical-align:middle;
+}
+.table-wrapper.table-lots-list .data-table td:last-child .btn-lots-action{
+  font-size:10px;
+  line-height:1.15;
+  padding:0 6px;
+  white-space:normal;
+  text-align:center;
+  max-width:4rem;
+  height:34px;
+  min-height:34px;
+  box-sizing:border-box;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  vertical-align:middle;
+}
+.lots-list-narrow-hint{
+  display:none;
+  margin:0 0 10px 0;
+  font-size:12px;
+  line-height:1.45;
+  color:#64748b;
+}
+
+/* 新增品項下方的明細表：較小高度，用於採購/報單/銷售明細 */
+.table-wrapper-items{
+  max-height:200px;
+  height:auto;
+}
+
+/* Import Items（報單品項明細）：固定欄寬，避免壓縮時「項次留白過大」 */
+.table-wrapper.table-import-items{
+  overflow-x:hidden;
+}
+.table-wrapper.table-import-items .data-table{
+  table-layout:fixed;
+  width:100%;
+  max-width:100%;
+}
+.table-wrapper.table-import-items .data-table th,
+.table-wrapper.table-import-items .data-table td{
+  min-width:0;
+  vertical-align:middle;
+}
+.table-wrapper.table-import-items .data-table col.imp-col-item-no{ width:5%; }
+.table-wrapper.table-import-items .data-table col.imp-col-product{ width:30%; }
+.table-wrapper.table-import-items .data-table col.imp-col-hs{ width:16%; }
+.table-wrapper.table-import-items .data-table col.imp-col-inv{ width:14%; }
+.table-wrapper.table-import-items .data-table col.imp-col-origin{ width:10%; }
+.table-wrapper.table-import-items .data-table col.imp-col-qty{ width:9%; }
+.table-wrapper.table-import-items .data-table col.imp-col-status{ width:8%; }
+.table-wrapper.table-import-items .data-table col.imp-col-actions{ width:8%; }
+.table-wrapper.table-import-items .data-table th:nth-child(2),
+.table-wrapper.table-import-items .data-table td:nth-child(2){
+  word-break:break-word;
+  overflow-wrap:anywhere;
+}
+.table-wrapper.table-import-items .data-table tbody td:first-child:not([colspan]){
+  padding-left:6px;
+  padding-right:6px;
+  text-align:center;
+  white-space:nowrap;
+}
+
+/* 產品「多單位換算」：矩陣／一覽式（左基準 1 投料單位 ⇒ 右側多條產出） */
+.p-unit-ratio-table-host{
+  min-width:0;
+  max-width:100%;
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+}
+.p-unit-ratio-matrix{
+  min-width:0;
+  max-width:100%;
+  box-sizing:border-box;
+}
+.p-unit-ratio-matrix-inner{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:flex-start;
+  gap:8px 10px;
+  padding:12px;
+  background:#f8fafc;
+  border:1px solid #e2e8f0;
+  border-radius:8px;
+  box-sizing:border-box;
+}
+.p-unit-ratio-matrix-head{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:6px 8px;
+  min-width:0;
+}
+.p-unit-ratio-matrix-lead{
+  font-weight:400;
+  font-size:14px;
+  color:#475569;
+  line-height:32px;
+  flex-shrink:0;
+}
+/* 與列上單位選單同高／字級／邊框，僅寬度較窄（短一點） */
+.p-unit-ratio-matrix-base-select{
+  height:32px;
+  padding:0 8px;
+  font-size:13px;
+  font-weight:400;
+  color:#334155;
+  min-width:4.75rem;
+  max-width:7rem;
+  border:1px solid #ddd;
+  border-radius:6px;
+  background:#fff;
+  box-sizing:border-box;
+  flex-shrink:0;
+}
+/* 每列產出左側 ⇒（可產生後不再重複一個） */
+.p-unit-ratio-matrix-row-arrow{
+  color:#94a3b8;
+  line-height:32px;
+  flex-shrink:0;
+  font-size:15px;
+}
+.p-unit-ratio-matrix-rows{
+  flex:1 1 200px;
+  min-width:0;
+  max-width:100%;
+  max-height:220px;
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+}
+@media (max-width:768px){
+  .p-unit-ratio-matrix-inner{
+    flex-direction:column;
+    align-items:stretch;
+    gap:10px;
+  }
+  .p-unit-ratio-matrix-rows{
+    flex:none;
+    width:100%;
+    max-height:280px;
+  }
+}
+.p-unit-ratio-matrix-line{
+  margin-bottom:8px;
+}
+.p-unit-ratio-matrix-line:last-child{
+  margin-bottom:0;
+}
+.p-unit-ratio-matrix-line-main{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+}
+.p-unit-ratio-matrix-line-main input[data-role="per_base"]{
+  width:5.75rem;
+  max-width:100%;
+  min-width:0;
+  height:32px;
+  padding:0 8px;
+  font-size:13px;
+  box-sizing:border-box;
+}
+.p-unit-ratio-matrix-line-main select[data-role="unit"]{
+  min-width:5.5rem;
+  max-width:8.5rem;
+  width:auto;
+  height:32px;
+  padding:0 8px;
+  font-size:13px;
+  box-sizing:border-box;
+}
+.p-unit-ratio-matrix-line-hint{
+  display:block;
+  font-size:12px;
+  color:#64748b;
+  margin-top:4px;
+  padding-left:2px;
+  word-break:break-word;
+}
+
+.data-table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:13px;
+}
+
+.data-table th{
+  background:#f1f5f9;
+  padding:12px;
+  text-align:left;
+  cursor:pointer;
+  position:sticky;
+  top:0;
+  z-index:2;
+}
+/* 左上角表頭：同時 sticky top+left，需最高層才不會在捲動時被蓋住（Logs 紀錄編號等） */
+.data-table thead th:first-child{
+  z-index:3;
+}
+
+.data-table td{
+  padding:12px;
+  border-top:1px solid #eee;
+}
+
+/* 狀態欄：表頭與儲存格置中（主檔等使用 th/td.col-status） */
+.data-table th.col-status,
+.data-table td.col-status{
+  text-align:center;
+  vertical-align:middle;
+}
+
+/* Logs 分頁列：不超出主內容寬（按鈕高度沿用全站 button 36px） */
+.logs-tab-bar{
+  max-width:100%;
+  box-sizing:border-box;
+  gap:10px;
+}
+
+/* ===== Logs 表格：與其他模組相同，100% 寬、不強制 min-width（避免表格外層橫向捲動） ===== */
+.logs-table{
+  table-layout: fixed;
+  width: 100%;
+  max-width: 100%;
+}
+.logs-table .logs-col-id{ width: 14%; }
+.logs-table .logs-col-table{ width: 22%; }
+.logs-table .logs-col-ref{ width: 18%; }
+.logs-table .logs-col-action{ width: 9%; }
+.logs-table .logs-col-user{ width: 10%; }
+.logs-table .logs-col-time{ width: 17%; }
+.logs-table .logs-col-view{ width: 10%; }
+/* 覆寫全站首欄 nowrap，長編號／長 ID 可換行 */
+.table-wrapper .logs-table th:first-child,
+.table-wrapper .logs-table td:first-child{
+  white-space: normal;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+.logs-table td:nth-child(2),
+.logs-table td:nth-child(3){
+  word-break: break-all;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.logs-table th,
+.logs-table td{
+  vertical-align: top;
+}
+
+.logs-details summary{
+  cursor:pointer;
+  color:#0369a1;
+  font-size:12px;
+  line-height:1.4;
+  word-break: break-all;
+}
+
+.logs-pre{
+  white-space: pre-wrap;
+  font-size: 11px;
+  margin: 8px 0 0 0;
+  max-height: 160px;
+  overflow: auto;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+/* ===== Logs View 藍色連結 ===== */
+.logs-view-link{
+  color:#2563eb;
+  text-decoration:underline;
+  cursor:pointer;
+}
+
+.logs-view-link:hover{
+  opacity:0.8;
+}
+
+/* ===== 狀態標籤 ===== */
+.badge{
+  padding:4px 8px;
+  border-radius:12px;
+  font-size:12px;
+  font-weight:600;
+}
+
+.badge-active{
+  background:#dcfce7;
+  color:#166534;
+}
+
+.badge-inactive{
+  background:#f1f5f9;
+  color:#475569;
+}
+
+/* 主檔列表狀態：英文碼與中文說明分兩行 */
+.badge.badge-stack{
+  display:inline-flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  line-height:1.25;
+  text-align:center;
+  white-space:normal;
+  padding:6px 10px;
+  min-width:6.5em;
+  box-sizing:border-box;
+}
+.badge.badge-stack .badge-line{
+  display:block;
+  max-width:14ch;
+}
+.badge.badge-stack .badge-line-zh{
+  font-weight:500;
+  font-size:11px;
+  opacity:0.95;
+}
+
+/* ===== 主檔列表：狀態燈號（綠＝使用中、灰＝停用、黃＝其他） ===== */
+.status-lamp{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  font-size:13px;
+  line-height:1.25;
+  color:#334155;
+}
+.status-lamp--solo{
+  gap:0;
+  flex-shrink:0;
+}
+.erp-status-select-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  width:100%;
+  min-width:0;
+}
+.erp-status-select-row select{
+  flex:1 1 auto;
+  min-width:0;
+}
+.status-lamp-dot{
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  flex-shrink:0;
+  box-sizing:border-box;
+  box-shadow:0 0 0 1px rgba(0,0,0,0.08) inset;
+}
+.status-lamp--active .status-lamp-dot{
+  background:#16a34a;
+  box-shadow:0 0 0 2px rgba(22,163,74,0.38);
+}
+.status-lamp--inactive .status-lamp-dot{
+  background:#94a3b8;
+  box-shadow:0 0 0 2px rgba(148,163,184,0.35);
+}
+.status-lamp--unknown .status-lamp-dot{
+  background:#ca8a04;
+  box-shadow:0 0 0 2px rgba(202,138,4,0.38);
+}
+.status-lamp-text{
+  white-space:nowrap;
+}
+
+/* ===== 表格 hover ===== */
+.data-table tbody tr:hover{
+  background:#f8fafc;
+}
+
+/* ===== 排序箭頭 ===== */
+th span{
+  font-size:12px;
+  color:#64748b;
+}
+
+/* ===== 列表 Load 鈕（class 仍為 btn-edit） ===== */
+.btn-edit{
+  background:#e0f2fe;
+  color:#0369a1;
+  border:none;
+  padding:6px 12px;
+  border-radius:6px;
+  cursor:pointer;
+}
+.btn-edit:hover{
+  background:#bae6fd;
+}
+
+/* 列表／明細表列內按鈕（縮小；表單底部 .button-group、搜尋列不受影響） */
+.data-table tbody button{
+  height:28px;
+  min-height:28px;
+  padding:0 10px;
+  font-size:12px;
+  line-height:1.2;
+  border-radius:5px;
+  box-sizing:border-box;
+  margin-right:6px;
+  vertical-align:middle;
+}
+.data-table tbody button:last-child{
+  margin-right:0;
+}
+.data-table tbody .btn-primary{
+  margin-right:6px;
+}
+
+/* ===== Toast ===== */
+.toast{
+  position:fixed;
+  /* 避免被 topbar 蓋住 */
+  top:72px;
+  right:20px;
+  padding:12px 18px;
+  border-radius:6px;
+  font-size:14px;
+  opacity:0;
+  transition:all .3s ease;
+  z-index:20050;
+  /* 避免隱形 toast 擋住右上角點擊（例如 help icon / Sheet） */
+  pointer-events:none;
+}
+.toast.show{
+  opacity:1;
+  pointer-events:auto;
+}
+.toast.success{
+  background:#dcfce7;
+  color:#166534;
+}
+.toast.error{
+  background:#fee2e2;
+  color:#991b1b;
+}
+.toast.warn{
+  background:#ffedd5;
+  color:#9a3412;
+}
+
+/* ===== Card Header Flex ===== */
+.card-header-flex{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+
+/* 讓右上角 help icon 不被其他元素遮擋點擊 */
+.card-header-flex [data-help]{
+  position:relative;
+  z-index:5;
+}
+
+/* ===== Sheet 捷徑（開啟對應試算表分頁）===== */
+.btn-sheet{
+  margin-left:8px;
+  font-size:12px;
+  padding:2px 10px;
+  height:26px;
+  line-height:1.2;
+  border-radius:4px;
+  border:1px solid #0f9d58;
+  background:#e8f5e9;
+  color:#1b5e20;
+  cursor:pointer;
+  font-weight:600;
+  vertical-align:middle;
+}
+.btn-sheet:hover{ background:#c8e6c9; }
+.btn-sheet-alt{
+  border-color:#1565c0;
+  background:#e3f2fd;
+  color:#0d47a1;
+}
+.btn-sheet-alt:hover{ background:#bbdefb; }
+
+/* ===== Info Icon ===== */
+.info-icon{
+  position:relative;
+  z-index:5;
+  cursor:pointer;
+  font-size:14px;
+  background:#e0f2fe;
+  color:#0369a1;
+  width:22px;
+  height:22px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:50%;
+  pointer-events:auto;
+}
+.info-icon:hover{
+  background:#bae6fd;
+}
+
+/* ===== Inline Help (藍底展開式) ===== */
+
+.help-inline{
+  display:none;
+  background:#f0f9ff;
+  border-left:4px solid #0ea5e9;
+  padding:14px 18px;
+  font-size:13px;
+  line-height:1.6;
+}
+
+.help-inline.show{
+  display:block;
+}
+
+/* ===== 加 Loading 圈圈 ===== */
+
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(255,255,255,0.7);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.loading-overlay.active {
+  display: flex;
+  /* 避免極端情況遮罩卡住整站點擊 */
+  pointer-events: none;
+}
+
+.login-overlay{
+  position:fixed;
+  inset:0;
+  background:rgba(15,23,42,0.55);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  z-index:9998;
+  padding:16px;
+  box-sizing:border-box;
+}
+.login-overlay.active{ display:flex; }
+
+/* ===== ERP Confirm Modal (async) ===== */
+.erp-confirm-overlay{
+  position:fixed;
+  inset:0;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  background:rgba(15,23,42,0.55);
+  z-index:10050;
+  box-sizing:border-box;
+}
+.erp-confirm-overlay.active{display:flex;}
+.erp-confirm-card{
+  width:min(520px, calc(100vw - 32px));
+  background:#fff;
+  border-radius:14px;
+  box-shadow:0 20px 60px rgba(0,0,0,0.25);
+  border:1px solid rgba(148,163,184,0.35);
+  overflow:hidden;
+}
+.erp-confirm-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:14px 16px;
+  border-bottom:1px solid #e2e8f0;
+  background:#f8fafc;
+}
+.erp-confirm-title{
+  font-size:14px;
+  font-weight:600;
+  color:#0f172a;
+}
+.erp-confirm-x{
+  width:32px;
+  height:32px;
+  border-radius:10px;
+  border:1px solid #e2e8f0;
+  background:#fff;
+  cursor:pointer;
+  font-size:18px;
+  line-height:1;
+  color:#334155;
+}
+.erp-confirm-message{
+  padding:16px;
+  color:#0f172a;
+  font-size:14px;
+  line-height:1.6;
+  white-space:pre-wrap;
+}
+.erp-confirm-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+  padding:14px 16px;
+  border-top:1px solid #e2e8f0;
+  background:#fff;
+}
+
+/* 未登入：整個系統不顯示（只留登入遮罩） */
+body.erp-locked .sidebar,
+body.erp-locked .main,
+body.erp-locked .sidebar-backdrop{
+  display:none !important;
+}
+.login-card{
+  width:min(440px, 94vw);
+  background:#fff;
+  border-radius:10px;
+  border:1px solid #e5e7eb;
+  box-shadow:0 12px 28px rgba(2,6,23,0.18);
+  padding:22px 22px 18px 22px;
+  box-sizing:border-box;
+}
+.login-form{
+  margin:0;
+  padding:0;
+  border:none;
+  display:block;
+}
+.login-brand{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  margin-bottom:18px;
+}
+.login-logo{
+  display:block;
+  width:100%;
+  max-width:320px;
+  height:auto;
+  max-height:min(28vh, 200px);
+  object-fit:contain;
+}
+.login-logo.login-logo--broken{ display:none; }
+.login-brand-fallback{
+  display:none;
+  flex-direction:column;
+  align-items:center;
+  gap:4px;
+  text-align:center;
+}
+.login-brand-fallback.show{ display:flex; }
+.login-brand-fallback .login-brand-title{
+  font-size:14px;
+  font-weight:700;
+  letter-spacing:0.4px;
+  color:#0f172a;
+}
+.login-brand-fallback .login-brand-sub{
+  font-size:13px;
+  font-weight:800;
+  color:#0f172a;
+}
+.login-title{
+  font-size:18px;
+  font-weight:800;
+  color:#0f172a;
+  margin:0 0 14px 0;
+}
+.login-title-row{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  margin:0 0 12px 0;
+}
+.login-title-row .login-title{
+  margin:0;
+}
+.login-title-row #googleSignInWrap{
+  width:auto;
+  display:flex;
+  justify-content:flex-start;
+}
+.login-title-row #googleSignInBtn{
+  width:auto;
+}
+.login-row{
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+.login-row.login-row--split > input.login-field{
+  flex:3 1 0;
+  min-width:0;
+}
+.login-row.login-row--split .login-pw-wrap{
+  flex:4 1 0;
+  width:auto;
+  min-width:0;
+}
+@media (max-width:520px){
+  .login-row.login-row--split{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .login-row.login-row--split .login-pw-wrap{
+    width:100%;
+  }
+}
+.login-row input[type="text"]{
+  flex:1 1 auto;
+  min-width:0;
+}
+ .login-row input[type="password"]{
+  flex:1 1 auto;
+  min-width:0;
+}
+.login-field{
+  width:100%;
+  height:40px;
+  padding:0 12px;
+  border:1px solid #dbe3ee;
+  border-radius:6px;
+  background:#fff;
+  font-size:14px;
+  color:#0f172a;
+  box-sizing:border-box;
+  outline:none;
+}
+.login-field:focus{
+  border-color:#2563eb;
+  box-shadow:0 0 0 3px rgba(37,99,235,0.15);
+}
+.login-pw-wrap{
+  display:flex;
+  width:100%;
+  gap:8px;
+  align-items:center;
+}
+.login-pw-wrap input.login-field{
+  flex:1 1 auto;
+  min-width:0;
+}
+.login-eye{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:40px;
+  height:40px;
+  padding:0;
+  flex-shrink:0;
+  border:1px solid #dbe3ee;
+  border-radius:6px;
+  background:#fff;
+  color:#334155;
+  cursor:pointer;
+  line-height:0;
+}
+.login-eye-icon{
+  display:none;
+}
+/* 密碼隱藏：斜線遮眼（閉起）；密碼顯示：睜眼 */
+.login-eye[data-state="hidden"] .login-eye-icon--slashed{ display:block; }
+.login-eye[data-state="visible"] .login-eye-icon--open{ display:block; }
+.login-eye svg{
+  display:block;
+  vertical-align:middle;
+}
+.login-eye:focus-visible{
+  outline:2px solid #2563eb;
+  outline-offset:2px;
+}
+.login-meta{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  margin-top:10px;
+}
+.login-remember{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-size:13px;
+  color:#334155;
+  user-select:none;
+}
+.login-actions{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  margin-top:14px;
+}
+.login-actions .btn-primary{
+  min-width:96px;
+}
+.login-error{
+  margin-top:10px;
+  font-size:12px;
+  color:#b91c1c;
+  display:none;
+  line-height:1.4;
+}
+.login-error.show{ display:block; }
+
+.login-status{
+  margin-top:10px;
+  font-size:12px;
+  color:#2563eb;
+  display:none;
+  line-height:1.4;
+  text-align:center;
+  font-weight:600;
+}
+.login-status.show{ display:block; }
+
+/* Google Sign-In button：整行滿寬、按鈕靠左（不強迫 iframe 撐滿，避免內容看起來置中）
+   - 但若放在標題列右側（.login-title-row），寬度由該列的規則控制（避免擠壓標題） */
+#googleSignInWrap{ width:100%; }
+#googleSignInBtn{ width:100%; text-align:left; }
+#googleSignInBtn > div{ width:100% !important; display:flex; justify-content:flex-start; }
+.login-title-row #googleSignInWrap{ width:auto; }
+.login-title-row #googleSignInBtn{ width:auto; }
+.login-title-row #googleSignInBtn > div{ width:auto !important; }
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 5px solid #ccc;
+  border-top: 5px solid #2a6cff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 選單切換時在內容區頂部顯示，列表載完即消失 */
+.module-loading-hint {
+  padding: 12px 16px;
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 14px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+/* ===== 響應式：小桌面 / 筆電未全螢幕 ===== */
+@media (max-width:1366px){
+  .sidebar{ width:252px; min-width:252px; padding:14px 12px; }
+  #content{ padding:20px; }
+  .search-toolbar input,.search-toolbar select{ min-width:120px; }
+  /* 首欄（多為 ID／單號）：允許必要時換行，但勿用 anywhere（會變一字一行）；收貨明細 table-rcv-lines 規則仍優先 */
+  .table-wrapper > .data-table th:first-child,
+  .table-wrapper > .data-table td:first-child{
+    white-space:normal;
+    word-break:normal;
+    overflow-wrap:break-word;
+    max-width:min(32ch, 48vw);
+    min-width:7.5ch;
+    line-height:1.35;
+    vertical-align:middle;
+  }
+  /* 收貨項次：排除首欄「寬鬆單號」規則 */
+  .table-wrapper.table-rcv-lines .data-table th.col-rcv-item-no,
+  .table-wrapper.table-rcv-lines .data-table td.col-rcv-item-no{
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  /* Lots：首欄為 Lot ID（ellipsis），排除首欄寬鬆規則 */
+  .table-wrapper.table-lots-list .data-table thead th:first-child,
+  .table-wrapper.table-lots-list .data-table tbody td:first-child:not([colspan]){
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    min-width:0;
+    max-width:none;
+  }
+}
+
+@media (max-width:1024px){
+  .sidebar{ width:232px; min-width:232px; padding:12px 10px; }
+  .sidebar a,.section-title{ font-size:13px; }
+  #content{ padding:16px; }
+  .table-wrapper{ height:360px; }
+  .table-wrapper.table-wrapper-tall{ height:480px; }
+  .table-wrapper.table-wrapper-master{
+    height:min(58vh, 720px);
+    min-height:380px;
+  }
+  /* 收貨明細：窄視窗九欄硬塞會裁切日期／收貨數量；給表格最小寬度並允許橫向捲動（項次 sticky 仍可用） */
+  .table-wrapper.table-rcv-lines{
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  .table-wrapper.table-rcv-lines .data-table{
+    min-width:1000px;
+  }
+  .table-wrapper.table-rcv-lines .data-table thead th{
+    white-space:nowrap;
+    line-height:1.3;
+  }
+  .rcv-lines-narrow-hint{ display:block; }
+  .table-wrapper.table-lots-list{
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  .table-wrapper.table-lots-list .data-table{
+    min-width:1040px;
+  }
+  .table-wrapper.table-lots-list .data-table thead th{
+    white-space:nowrap;
+    line-height:1.3;
+  }
+  .lots-list-narrow-hint{ display:block; }
+}
+
+@media (max-width:768px){
+  /* 側欄改為覆蓋式抽屜，主區佔滿寬 */
+  body{
+    display:block;
+    position:relative;
+    height:100vh;
+    height:100dvh;
+  }
+  .sidebar-backdrop{
+    display:block;
+    position:fixed;
+    inset:0;
+    z-index:1000;
+    background:rgba(15,23,42,0.45);
+    opacity:0;
+    pointer-events:none;
+    visibility:hidden;
+    transition:opacity 0.28s ease, visibility 0.28s ease;
+  }
+  body.sidebar-drawer-open .sidebar-backdrop{
+    opacity:1;
+    pointer-events:auto;
+    visibility:visible;
+  }
+  .sidebar{
+    position:fixed;
+    top:0;
+    left:0;
+    bottom:0;
+    width:min(288px, 86vw);
+    min-width:0;
+    max-height:none;
+    z-index:1001;
+    padding:16px 14px;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    box-shadow:4px 0 24px rgba(0,0,0,0.18);
+    transform:translateX(-100%);
+    transition:transform 0.28s ease;
+    display:block;
+  }
+  body.sidebar-drawer-open .sidebar{
+    transform:translateX(0);
+  }
+  .sidebar h2{ margin:0 0 12px 0; font-size:1.05rem; }
+  .section-title{ margin-top:14px; }
+  .main{
+    display:flex;
+    flex-direction:column;
+    min-height:100vh;
+    min-height:100dvh;
+    width:100%;
+  }
+  #content{ padding:12px; flex:1 1 auto; min-height:0; overflow-y:auto; }
+  .card-body{ padding:14px; }
+  .table-wrapper{ height:320px; }
+  .table-wrapper.table-wrapper-tall{ height:400px; }
+  .table-wrapper.table-wrapper-master{
+    height:min(42vh, 560px);
+    min-height:280px;
+  }
+  .topbar{ flex-wrap:wrap; padding:10px 12px; }
+  .sidebar-toggle{ display:inline-flex; }
+  .topbar-site-title,
+  .topbar-version-label{
+    display:none;
+  }
+}
+
+</style>
+</head>
+
+<body class="erp-locked">
+
+<div class="sidebar-backdrop" id="sidebarBackdrop" aria-hidden="true"></div>
+
+<nav class="sidebar" id="sidebarNav" aria-label="主選單">
+  <h2>DINGLI 鼎力<br/>ERP v3.3</h2>
+
+  <a data-nav-module="dashboard" onclick="navigate('dashboard')" title="總覽與建議操作順序">Dashboard 儀表板</a>
+
+  <div class="section-title">MASTER DATA 主檔</div>
+  <a data-nav-module="products" onclick="navigate('products')" title="建立產品主檔，採購/報單/出貨會用到">Products 產品</a>
+  <a data-nav-module="suppliers" onclick="navigate('suppliers')" title="建立供應商，採購單與報單會用到">Suppliers 供應商</a>
+  <a data-nav-module="customers" onclick="navigate('customers')" title="建立客戶，銷售單與出貨會用到">Customers 客戶</a>
+  <a data-nav-module="warehouses" onclick="navigate('warehouses')" title="建立倉庫主檔，收貨/批次/庫存可追倉別">Warehouses 倉庫</a>
+  <a data-nav-module="users" onclick="navigate('users')" title="使用者帳號，影響操作紀錄的建立人">Users 使用者</a>
+
+  <div class="section-title">Inbound 進貨</div>
+  <a data-nav-module="purchase" onclick="navigate('purchase')" title="建立採購單，再至收貨入庫收貨">Purchase Orders 採購單</a>
+  <a data-nav-module="import" onclick="navigate('import')" title="進口報單資料，再至收貨入庫收貨">Import Doc(s) 進口報單</a>
+  <a data-nav-module="receive" onclick="navigate('receive')" title="依採購單或報單收貨，產生批次">Goods Receipt 收貨入庫</a>
+  
+  <div class="section-title">INVENTORY 庫存</div>
+  <a data-nav-module="lots" onclick="navigate('lots')" title="批次 QA 管理，放行後才可出貨/扣庫">Lots 批次QA管理</a>
+  <a data-nav-module="movements" onclick="navigate('movements')" title="手動扣庫（Manual OUT）">Movements 庫存異動</a>
+  <a data-nav-module="warehouse_stock" onclick="navigate('warehouse_stock')" title="依倉別查看產品庫存與有效期限">Warehouse 倉庫庫存</a>
+  <!-- 隱藏：<a onclick="navigate('split')">Split 拆批</a> / <a onclick="navigate('merge')">Merge 合批</a> -->
+
+  <div class="section-title">PROCESS 加工</div>
+  <a data-nav-module="outsource" onclick="navigate('outsource')" title="委外加工單，投料扣庫、回收產生新批次">Outsource 委外加工單</a>
+  <!-- Factory Receipt 加工回收整合於委外加工單內 -->
+
+  <div class="section-title">SALES 銷售</div>
+  <a data-nav-module="sales" onclick="navigate('sales')" title="建立銷售單，實際扣庫在出貨">Sales Orders 銷售單</a>
+  <a data-nav-module="shipping" onclick="navigate('shipping')" title="出貨過帳，扣庫並連結銷售單">Shipment 出貨管理</a>
+
+  <div class="section-title">TRACEABILITY 追溯</div>
+  <a data-nav-module="trace" onclick="navigate('trace')" title="查 Lot 來源與流向">Lot Traceability 批次追溯</a>
+
+  <div class="section-title">AUDIT 稽核</div>
+  <a data-nav-module="logs" onclick="navigate('logs')" title="所有異動紀錄">Logs 操作紀錄</a>
+</nav>
+
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-left">
+      <button type="button" class="sidebar-toggle" id="sidebarToggle" aria-controls="sidebarNav" aria-expanded="false" aria-label="開啟選單">
+        <span class="sidebar-toggle-bar" aria-hidden="true"></span>
+        <span class="sidebar-toggle-bar" aria-hidden="true"></span>
+        <span class="sidebar-toggle-bar" aria-hidden="true"></span>
+      </button>
+      <span class="topbar-site-title">Enterprise Resource Planning System</span>
+    </div>
+    <div class="topbar-right">
+      <div class="topbar-version-label">Version 3.3</div>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <span id="topbarCurrentUser" class="topbar-user-id" title="">—</span>
+        <button type="button" class="btn-secondary" id="logoutBtn" style="height:32px;padding:0 10px;" title="清除登入並重新登入">登出</button>
+      </div>
+    </div>
+  </div>
+  <div id="content"></div>
+  <div id="toast" class="toast"></div>
+</div>
+
+<div id="loadingOverlay" class="loading-overlay">
+  <div class="spinner"></div>
+</div>
+
+<div id="loginOverlay" class="login-overlay" role="dialog" aria-modal="true" aria-labelledby="loginTitle" aria-hidden="true">
+  <div class="login-card">
+    <form id="loginForm" class="login-form" action="#" method="post" autocomplete="on" novalidate>
+      <div class="login-brand">
+        <img class="login-logo" src="assets/dingli-logo.png" width="320" height="120" alt="DINGLI BIOTECH 鼎立生技" decoding="async" onerror="this.classList.add('login-logo--broken');var fb=document.getElementById('loginBrandFallback');if(fb)fb.classList.add('show');">
+        <div id="loginBrandFallback" class="login-brand-fallback" aria-hidden="true">
+          <span class="login-brand-title">DINGLI BIOTECH</span>
+          <span class="login-brand-sub">鼎立生技</span>
+        </div>
+      </div>
+      <div class="login-title-row">
+        <div id="loginTitle" class="login-title sr-only">登入</div>
+        <div id="googleSignInWrap" style="display:none;">
+          <div id="googleSignInBtn"></div>
+        </div>
+      </div>
+      <div class="login-meta">
+        <label class="login-remember">
+          <input type="checkbox" id="loginRemember" checked>
+          保持登入
+        </label>
+        <label class="login-remember" id="loginAdminToggleWrap" title="勾選後才顯示帳密登入（僅供 ADMIN 救火）">
+          <input type="checkbox" id="loginAdminToggle">
+          管理者
+        </label>
+      </div>
+      <div id="loginError" class="login-error"></div>
+      <div id="loginStatus" class="login-status" aria-live="polite"></div>
+      <div id="passwordLoginWrap">
+        <div class="login-row login-row--split" style="margin-top:10px;">
+          <input type="text" class="login-field" id="loginUserId" name="username" placeholder="" autocomplete="username" required>
+          <div class="login-pw-wrap">
+            <input type="password" class="login-field" id="loginPassword" name="password" autocomplete="current-password" required>
+            <button type="button" class="login-eye" id="loginPwToggle" data-state="hidden" title="顯示密碼" aria-label="顯示密碼">
+              <span class="login-eye-icon login-eye-icon--open" aria-hidden="true">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+              </span>
+              <span class="login-eye-icon login-eye-icon--slashed" aria-hidden="true">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88"/></svg>
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="login-actions" id="passwordLoginActions">
+        <button type="button" class="btn-secondary" id="loginClearBtn">清除</button>
+        <button type="submit" class="btn-primary" id="loginSubmitBtn">登入</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ERP 共用確認視窗（自訂 Modal；目前提供 async 版本，未取代 confirm） -->
+<div id="erpConfirmOverlay" class="erp-confirm-overlay" role="dialog" aria-modal="true" aria-hidden="true">
+  <div class="erp-confirm-card" role="document" aria-labelledby="erpConfirmTitle" aria-describedby="erpConfirmMessage">
+    <div class="erp-confirm-head">
+      <div id="erpConfirmTitle" class="erp-confirm-title">確認</div>
+      <button type="button" class="erp-confirm-x" id="erpConfirmCloseBtn" aria-label="關閉">×</button>
+    </div>
+    <div id="erpConfirmMessage" class="erp-confirm-message"></div>
+    <div class="erp-confirm-actions">
+      <button type="button" class="btn-secondary" id="erpConfirmCancelBtn">取消</button>
+      <button type="button" class="btn-primary" id="erpConfirmOkBtn">確定</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="js/core/schema.js"></script>
+<script src="js/core/utils.js?v=20260423c"></script>
+<script src="js/core/inventory-utils.js"></script>
+<script src="js/core/inventory-data.js"></script>
+<script src="js/core/sheet-links.js"></script>
+<script src="js/core/config.js?v=20260422g"></script>
+<script src="js/core/ux-guards.js?v=20260425a"></script>
+<script src="js/core/service.js?v=20260429a"></script>
+<script src="js/core/login.js?v=20260429a"></script>
+<script src="js/help.js"></script>
+<script src="js/router.js?v=20260423a"></script>
+<script src="js/dashboard.js?v=20260423a"></script>
+<script src="js/products.js?v=20260423d"></script>
+<script src="js/suppliers.js?v=20260423c"></script>
+<script src="js/customers.js?v=20260423d"></script>
+<script src="js/warehouses.js?v=20260423b"></script>
+<script src="js/purchase.js"></script>
+<script src="js/receive.js"></script>
+<script src="js/lots.js"></script>
+<script src="js/movements.js"></script>
+<script src="js/import.js"></script>
+<script src="js/logs.js"></script>
+<script src="js/outsource.js"></script>
+<script src="js/sales.js"></script>
+<script src="js/shipping.js"></script>
+<script src="js/trace.js?v=20260423a"></script>
+<script src="js/split.js"></script>
+<script src="js/merge.js"></script>
+<script src="js/users.js"></script>
+<script src="js/warehouse-stock.js"></script>
+
+<script>
+  /* 小螢幕側欄抽屜：漢堡鈕、遮罩、Esc；navigate() 會呼叫 closeSidebarDrawer */
+  (function(){
+    var mq = window.matchMedia("(max-width:768px)");
+    var toggle = document.getElementById("sidebarToggle");
+    var backdrop = document.getElementById("sidebarBackdrop");
+    function isDrawerMode(){
+      return mq.matches;
+    }
+    function setOpen(open){
+      if(!isDrawerMode()){
+        document.body.classList.remove("sidebar-drawer-open");
+        document.body.style.overflow = "";
+        if(toggle){
+          toggle.setAttribute("aria-expanded", "false");
+          toggle.setAttribute("aria-label", "開啟選單");
+        }
+        if(backdrop) backdrop.setAttribute("aria-hidden", "true");
+        return;
+      }
+      document.body.classList.toggle("sidebar-drawer-open", !!open);
+      document.body.style.overflow = open ? "hidden" : "";
+      if(toggle){
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+        toggle.setAttribute("aria-label", open ? "關閉選單" : "開啟選單");
+      }
+      if(backdrop) backdrop.setAttribute("aria-hidden", open ? "false" : "true");
+    }
+    function closeSidebarDrawer(){
+      setOpen(false);
+    }
+    window.closeSidebarDrawer = closeSidebarDrawer;
+    if(toggle){
+      toggle.addEventListener("click", function(){
+        if(!isDrawerMode()) return;
+        setOpen(!document.body.classList.contains("sidebar-drawer-open"));
+      });
+    }
+    if(backdrop){
+      backdrop.addEventListener("click", function(){
+        closeSidebarDrawer();
+      });
+    }
+    document.addEventListener("keydown", function(e){
+      if(e.key === "Escape") closeSidebarDrawer();
+    });
+    mq.addEventListener("change", function(){
+      if(!isDrawerMode()) closeSidebarDrawer();
+    });
+  })();
+
+  // 頂欄：顯示目前登入者（僅文字，不可切換帳號）
+  (function(){
+    var lab = document.getElementById("topbarCurrentUser");
+    if(!lab) return;
+    var uid = "";
+    try{
+      uid = (sessionStorage.getItem("erp_current_user") || localStorage.getItem("erp_current_user") || "").trim();
+    }catch(_e){}
+    if(uid){
+      lab.textContent = uid;
+      lab.title = "目前登入：" + uid;
+    }
+  })();
+</script>
+
+
+</body>
+</html>

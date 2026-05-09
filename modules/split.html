@@ -1,0 +1,84 @@
+<!-- ===== Split 拆批 ===== -->
+<div class="card">
+  <div class="card-header card-header-flex">
+    <span>
+      Split 拆批
+      <button type="button" class="btn-sheet" onclick="openSheetLink('lot')" title="批次主檔（lot）">Sheet</button>
+    </span>
+    <span data-help="splitMain"></span>
+  </div>
+
+  <div class="card-body">
+    <div class="form-grid-4">
+      <div class="form-group">
+        <label>來源 Lot *</label>
+        <select id="split_source_lot" onchange="onSelectSplitSource()"></select>
+      </div>
+      <div class="form-group">
+        <label>產品</label>
+        <input type="text" id="split_product" readonly>
+      </div>
+      <div class="form-group">
+        <label>可用量</label>
+        <input type="text" id="split_available" readonly>
+      </div>
+      <div class="form-group">
+        <label>單位</label>
+        <input type="text" id="split_unit" readonly>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header card-header-flex">
+    <span>新批次（可多筆）</span>
+  </div>
+  <div class="card-body">
+    <div class="form-grid-4">
+      <div class="form-group">
+        <label>新 Lot ID *</label>
+        <input type="text" id="split_new_lot_id" placeholder="自動產生ID">
+      </div>
+      <div class="form-group">
+        <label>拆出數量 *</label>
+        <div class="erp-input-with-suffix">
+          <input type="number" id="split_new_qty" min="0" step="0.01">
+          <span id="split_new_unit_suffix" class="erp-input-suffix"></span>
+        </div>
+        <input type="hidden" id="split_new_unit" value="">
+      </div>
+      <div class="form-group full-width">
+        <label>備註</label>
+        <input type="text" id="split_new_remark">
+      </div>
+    </div>
+
+    <div class="button-group">
+      <button class="btn-primary" id="split_add_btn" onclick="addSplitDraft()">新增</button>
+      <button class="btn-secondary" onclick="resetSplit()">清除</button>
+    </div>
+
+    <br>
+
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>項次</th>
+            <th>新 Lot</th>
+            <th>數量</th>
+            <th>備註</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="splitBody"></tbody>
+      </table>
+    </div>
+
+    <div class="button-group" id="splitPostButtonGroup" style="margin-top:10px;">
+      <button class="btn-primary" id="split_post_btn" onclick="postSplit(this)">確認拆批（過帳）</button>
+      <button type="button" class="btn-secondary" onclick="scrollToEditorTop()">回到上方</button>
+    </div>
+  </div>
+</div>

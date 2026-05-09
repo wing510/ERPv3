@@ -1,0 +1,162 @@
+<!-- ===== Goods Receipt 收貨入庫 ===== -->
+<div class="card">
+  <div class="card-header card-header-flex">
+    <span>
+      Goods Receipt 收貨入庫
+      <button type="button" class="btn-sheet" onclick="openSheetLink('goods_receipt')" title="收貨主檔（goods_receipt）">PO Sheet</button>
+      <button type="button" class="btn-sheet btn-sheet-alt" onclick="openSheetLink('import_receipt')" title="進口收貨（import_receipt）">Import Sheet</button>
+      <span id="rcvReceiptState" style="font-size:12px;color:#64748b;font-weight:500;margin-left:10px;">收庫流程：未載入 — 請先選擇來源類型與單號</span>
+      <span id="rcvLotState" style="font-size:12px;color:#64748b;font-weight:500;margin-left:10px;">批次狀態：未產生</span>
+    </span>
+    <span data-help="receiveHeader"></span>
+  </div>
+
+  <div class="card-body">
+    <div class="form-grid-4">
+      <div class="form-group">
+        <label>來源類型 *</label>
+        <select id="rcv_source_type">
+          <option value="">請選擇</option>
+          <option value="PO">PO（採購單）</option>
+          <option value="IMPORT">IMPORT（進口報單）</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>收貨單ID</label>
+        <input type="text" id="rcv_receipt_id" readonly placeholder="自動產生ID">
+      </div>
+      <div class="form-group">
+        <label>收貨日期 *</label>
+        <input type="datetime-local" id="rcv_receipt_date">
+      </div>
+
+      <div class="form-group full-width">
+        <label id="rcv_source_label">選擇 PO *</label>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <select id="rcv_source_id" style="min-width:0;flex:1 1 auto;"></select>
+          <label style="display:inline-flex;align-items:center;gap:6px;margin:0;font-weight:500;color:#64748b;font-size:12px;white-space:nowrap;flex:0 0 auto;">
+            <input type="checkbox" id="rcv_show_closed">
+            顯示已收完（CLOSED）
+          </label>
+        </div>
+      </div>
+      <div class="form-group full-width">
+        <label>備註</label>
+        <input type="text" id="rcv_remark">
+      </div>
+    </div>
+
+    <div class="button-group">
+      <button class="btn-secondary" id="rcv_reset_btn" type="button">清除</button>
+      <button class="btn-secondary" id="rcv_log_btn" type="button">Log</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 收貨明細：「本次收貨」欄內含單位後綴 ===== -->
+<div class="card">
+  <div class="card-header card-header-flex">
+    <span>
+      收貨明細
+      <button type="button" class="btn-sheet" onclick="openSheetLink('goods_receipt_item')" title="收貨明細（goods_receipt_item）">PO Sheet</button>
+      <button type="button" class="btn-sheet btn-sheet-alt" onclick="openSheetLink('import_receipt_item')" title="進口收貨明細（import_receipt_item）">Import Sheet</button>
+    </span>
+    <span data-help="receiveLines"></span>
+  </div>
+  <div class="card-body">
+    <p class="rcv-lines-narrow-hint">欄位較多時，請左右滑動表格以填寫「本次收貨」與日期。</p>
+    <div class="table-wrapper table-rcv-lines" style="height:220px;">
+      <table class="data-table">
+        <!-- 9 欄與 thead 一一對應；勿用單一 span 均分剩餘寬度，否則數量/已收/剩餘會被拉太寬 -->
+        <colgroup>
+          <col class="rcv-col-item-no" />
+          <col class="rcv-col-product" />
+          <col class="rcv-col-num" />
+          <col class="rcv-col-num" />
+          <col class="rcv-col-num" />
+          <col class="rcv-col-qty-input" />
+          <col class="rcv-col-wh" />
+          <col class="rcv-col-date" />
+          <col class="rcv-col-date" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th class="col-rcv-item-no">項次</th>
+            <th>產品（規格）</th>
+            <th>數量</th>
+            <th>已收</th>
+            <th>剩餘</th>
+            <th class="col-rcv-qty-cell">本次收貨</th>
+            <th>倉別</th>
+            <th>製造日</th>
+            <th>有效期</th>
+          </tr>
+        </thead>
+        <tbody id="rcvLinesBody"></tbody>
+      </table>
+    </div>
+    <div class="button-group" style="margin-top:10px;">
+      <button class="btn-primary" id="rcv_post_btn" type="button">產生批次</button>
+      <button type="button" class="btn-secondary" onclick="scrollToEditorTop()">回到上方</button>
+    </div>
+
+    <!-- 已收列表：與本張來源單收貨流程同一卡片，摺疊載入 -->
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid #eee;">
+      <details id="rcvPostedPanel">
+        <summary style="cursor:pointer;color:#2563eb;font-size:12px;font-weight:600;user-select:none;list-style-position:outside;line-height:1.5;">
+          已收列表（點開載入）
+          <span style="color:#94a3b8;font-weight:500;margin-left:10px;">作廢：若已被出庫、加工或調整扣減，導致可用量不足以沖銷入庫，則無法作廢。</span>
+        </summary>
+        <div style="margin-top:10px;">
+          <div class="table-wrapper" style="max-height:220px;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>收貨單</th>
+                  <th>收貨日期</th>
+                  <th>倉別</th>
+                  <th>明細</th>
+                  <th>總量</th>
+                  <th>狀態</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="rcvPostedBody">
+                <tr><td colspan="7" style="text-align:center;color:#64748b;padding:18px;">點開後載入</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+    </div>
+  </div>
+</div>
+
+<style>
+.rcv-void-modal { position:fixed; inset:0; z-index:9000; display:none; align-items:center; justify-content:center; padding:16px; }
+.rcv-void-modal.rcv-void-modal-open { display:flex; }
+.rcv-void-modal-overlay { position:absolute; inset:0; background:rgba(0,0,0,0.4); }
+.rcv-void-modal-dialog { position:relative; background:#fff; border-radius:10px; box-shadow:0 8px 32px rgba(0,0,0,0.2); width:100%; max-width:440px; padding:20px 22px; }
+.rcv-void-modal-dialog .form-group { margin-bottom:14px; }
+.rcv-void-modal-dialog label { display:block; font-size:13px; margin-bottom:6px; color:#334155; }
+.rcv-void-modal-dialog select, .rcv-void-modal-dialog textarea { width:100%; box-sizing:border-box; border:1px solid #ddd; border-radius:6px; padding:8px 10px; font-size:13px; }
+</style>
+<div id="rcvVoidModal" class="rcv-void-modal" role="dialog" aria-modal="true" aria-labelledby="rcvVoidModalTitle">
+  <div class="rcv-void-modal-overlay" onclick="rcvCloseVoidModal()"></div>
+  <div class="rcv-void-modal-dialog">
+    <h3 id="rcvVoidModalTitle" style="margin:0 0 8px;font-size:17px;">作廢收貨單</h3>
+    <p id="rcvVoidModalReceiptLabel" style="margin:0 0 16px;color:#475569;font-size:13px;line-height:1.45;"></p>
+    <div class="form-group">
+      <label for="rcv_void_reason_code">作廢原因 *</label>
+      <select id="rcv_void_reason_code"></select>
+    </div>
+    <div class="form-group">
+      <label for="rcv_void_reason_note">補充說明</label>
+      <textarea id="rcv_void_reason_note" rows="3" placeholder="選「其他」時請簡述"></textarea>
+    </div>
+    <div class="button-group" style="margin-top:16px;margin-bottom:0;">
+      <button type="button" class="btn-primary" id="rcv_void_modal_confirm">確認作廢</button>
+      <button type="button" class="btn-secondary" onclick="rcvCloseVoidModal()">取消</button>
+    </div>
+  </div>
+</div>

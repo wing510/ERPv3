@@ -1,0 +1,20 @@
+{
+  "siteUrl": "https://wing510.github.io/ERP",
+  "expectedVersion": "3.3",
+  "login": {
+    "userId": "ADMIN",
+    "password": "YOUR_PASSWORD"
+  },
+  "fullFlow": false,
+  "fixtures": {
+    "warehouseId": "MAIN",
+    "poId": "PO-請填一張可收貨的採購單",
+    "soId": "SO-請填一張可出貨的銷售單",
+    "soItemId": "SOI-請填該銷售單的一筆銷售品項ID",
+    "receiveQty": 1,
+    "shipQty": 1,
+    "voidReasonIndex": 1
+  },
+  "notes": "fullFlow=true 會跑「收貨過帳→作廢沖銷、出貨過帳→作廢反沖」的閉環，務必只在測試環境使用。"
+}
+

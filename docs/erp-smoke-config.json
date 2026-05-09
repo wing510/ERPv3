@@ -1,0 +1,19 @@
+{
+  "siteUrl": "http://127.0.0.1:5501",
+  "expectedVersion": "3.3",
+  "login": {
+    "userId": "admin",
+    "password": "admin1688"
+  },
+  "fullFlow": false,
+  "fixtures": {
+    "warehouseId": "",
+    "poId": "PO-260427-2259-E02D",
+    "soId": "",
+    "soItemId": "",
+    "receiveQty": 1,
+    "shipQty": 1,
+    "voidReasonIndex": 1
+  }
+}
+
