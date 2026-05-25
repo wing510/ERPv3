@@ -952,11 +952,18 @@ async function fetchShipmentItemsByLot_(lotId){
 
 async function fetchAvailByLot_(lotId){
   const id = upper_(lotId);
-  if(!id) return 0;
+  if(!id) return null;
+  function sumRows_(rows){
+    const list = Array.isArray(rows) ? rows : [];
+    if(!list.length) return null;
+    return list.reduce((sum, m) => sum + Number(m.qty || 0), 0);
+  }
   try{
-    const r = await callAPI({ action: "list_inventory_movement_by_lot", lot_id: id });
-    const mv = (r && r.data) ? r.data : [];
-    return (mv || []).reduce((sum, m) => sum + Number(m.qty || 0), 0);
+    const r = await callAPI({ action: "list_inventory_movement_by_lot", lot_id: id }, { method: "POST" });
+    const mv = typeof erpParseArrayDataResponse_ === "function"
+      ? erpParseArrayDataResponse_(r)
+      : ((r && r.data) ? r.data : []);
+    return sumRows_(mv);
   }catch(_e){
     // fallback：舊版後端未支援時，優先用「近 N 天 movements」避免全表下載；
     // 僅在這也失敗時才退回全表。
@@ -967,12 +974,12 @@ async function fetchAvailByLot_(lotId){
       );
       const mvRecent = typeof erpParseArrayDataResponse_ === "function" ? erpParseArrayDataResponse_(r) : [];
       if(Array.isArray(mvRecent)){
-        return mvRecent.filter(m => upper_(m.lot_id) === id).reduce((sum, m) => sum + Number(m.qty || 0), 0);
+        return sumRows_(mvRecent.filter(m => upper_(m.lot_id) === id));
       }
     }catch(_e2){}
 
     const mv = await getAll("inventory_movement").catch(() => []);
-    return (mv || []).filter(m => upper_(m.lot_id) === id).reduce((sum, m) => sum + Number(m.qty || 0), 0);
+    return sumRows_((mv || []).filter(m => upper_(m.lot_id) === id));
   }
 }
 
@@ -1030,7 +1037,7 @@ async function buildTraceGraph_(rootLotId, maxLots){
     try{
       availMap[cur] = await fetchAvailByLot_(cur);
     }catch(_e3){
-      availMap[cur] = 0;
+      availMap[cur] = null;
     }
   }
 
@@ -1230,12 +1237,25 @@ function traceStatusZh_(code){
   return c;
 }
 
+function traceFormatAvail_(available){
+  if(typeof invFormatAvailableText_ === "function") return invFormatAvailableText_(available);
+  if(available === null || available === undefined) return "--";
+  return String(available);
+}
+
 function traceGetAvailable(lotId){
   const id = upper_(lotId);
-  if(id && traceAvailByLotId && traceAvailByLotId[id] != null) return Number(traceAvailByLotId[id] || 0);
-  return (traceMovements || [])
-    .filter(m => upper_(m.lot_id) === id)
-    .reduce((sum, m) => sum + Number(m.qty || 0), 0);
+  if(!id) return null;
+  if(traceAvailByLotId && typeof traceAvailByLotId === "object"){
+    if(Object.prototype.hasOwnProperty.call(traceAvailByLotId, id)){
+      const v = traceAvailByLotId[id];
+      return (v === null || v === undefined) ? null : Number(v || 0);
+    }
+    if(Object.keys(traceAvailByLotId).length > 0) return null;
+  }
+  const rows = (traceMovements || []).filter(m => upper_(m.lot_id) === id);
+  if(!rows.length) return null;
+  return rows.reduce((sum, m) => sum + Number(m.qty || 0), 0);
 }
 
 function getLot(lotId){
@@ -1251,7 +1271,7 @@ function fmtLotLine(lotId, depth){
   const qa = lot.status || "PENDING";
   const inv = lot.inventory_status || "ACTIVE";
   const src = `${lot.source_type || ""}:${lot.source_id || ""}`;
-  return `${indent}- Lot: ${lot.lot_id} | Product:${lot.product_id} | Type:${lot.type} | QA:${qa} | Inv:${inv} | Avail:${av} | Src:${src}\n`;
+  return `${indent}- Lot: ${lot.lot_id} | Product:${lot.product_id} | Type:${lot.type} | QA:${qa} | Inv:${inv} | Avail:${traceFormatAvail_(av)} | Src:${src}\n`;
 }
 
 function traceUp(lotId, depth, visited){
@@ -1465,11 +1485,13 @@ async function runTrace(){
           fetchLotRelationsByLot_(lotId, "UP").catch(() => []),
           fetchLotRelationsByLot_(lotId, "DOWN").catch(() => []),
           fetchShipmentItemsByLot_(lotId).catch(() => []),
-          fetchAvailByLot_(lotId).catch(() => 0)
+          fetchAvailByLot_(lotId).catch(() => null)
         ]);
         traceRelations = ([]).concat(up || [], down || []);
         traceShipmentItems = ships || [];
-        traceAvailByLotId = { [String(lotId || "").trim().toUpperCase()]: Number(av || 0) };
+        const lid = String(lotId || "").trim().toUpperCase();
+        traceAvailByLotId = {};
+        if(lid) traceAvailByLotId[lid] = (av === null || av === undefined) ? null : Number(av || 0);
         traceMovements = [];
       }catch(_e1){
         // 最後最後才全表（極端情況）

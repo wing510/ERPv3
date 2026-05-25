@@ -868,13 +868,13 @@ button:disabled,
   width: 100%;
   max-width: 100%;
 }
-.logs-table .logs-col-id{ width: 14%; }
-.logs-table .logs-col-table{ width: 22%; }
-.logs-table .logs-col-ref{ width: 18%; }
-.logs-table .logs-col-action{ width: 9%; }
-.logs-table .logs-col-user{ width: 10%; }
-.logs-table .logs-col-time{ width: 17%; }
-.logs-table .logs-col-view{ width: 10%; }
+.logs-table .logs-col-id{ width: 15%; }
+.logs-table .logs-col-table{ width: 20%; }
+.logs-table .logs-col-ref{ width: 20%; }
+.logs-table .logs-col-action{ width: 20%; min-width: 120px; }
+.logs-table .logs-col-user{ width: 6%; min-width: 48px; }
+.logs-table .logs-col-time{ width: 14%; }
+.logs-table .logs-col-view{ width: 5%; min-width: 40px; }
 /* 覆寫全站首欄 nowrap，長編號／長 ID 可換行 */
 .table-wrapper .logs-table th:first-child,
 .table-wrapper .logs-table td:first-child{
@@ -887,6 +887,19 @@ button:disabled,
   word-break: break-all;
   font-size: 12px;
   line-height: 1.35;
+}
+.logs-table th:nth-child(4),
+.logs-table td:nth-child(4){
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 1.35;
+  padding-right: 10px;
+}
+.logs-table th:nth-child(5),
+.logs-table td:nth-child(5){
+  white-space: nowrap;
+  padding-left: 6px;
 }
 .logs-table th,
 .logs-table td{
@@ -1777,34 +1790,34 @@ body.erp-locked .sidebar-backdrop{
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="js/core/schema.js"></script>
 <script src="js/core/utils.js?v=20260423c"></script>
-<script src="js/core/inventory-utils.js"></script>
-<script src="js/core/inventory-data.js"></script>
-<script src="js/core/sheet-links.js"></script>
-<script src="js/core/config.js?v=20260422g"></script>
+<script src="js/core/inventory-utils.js?v=20260524c"></script>
+<script src="js/core/inventory-data.js?v=20260524e"></script>
+<script src="js/core/sheet-links.js?v=20260510b"></script>
+<script src="js/core/config.js?v=20260524b"></script>
 <script src="js/core/ux-guards.js?v=20260425a"></script>
 <script src="js/core/service.js?v=20260429a"></script>
-<script src="js/core/login.js?v=20260429a"></script>
+<script src="js/core/login.js?v=20260510e"></script>
 <script src="js/help.js"></script>
-<script src="js/router.js?v=20260423a"></script>
-<script src="js/dashboard.js?v=20260423a"></script>
+<script src="js/router.js?v=20260510a"></script>
+<script src="js/dashboard.js?v=20260510a"></script>
 <script src="js/products.js?v=20260423d"></script>
 <script src="js/suppliers.js?v=20260423c"></script>
 <script src="js/customers.js?v=20260423d"></script>
 <script src="js/warehouses.js?v=20260423b"></script>
 <script src="js/purchase.js"></script>
 <script src="js/receive.js"></script>
-<script src="js/lots.js"></script>
-<script src="js/movements.js"></script>
+<script src="js/lots.js?v=20260524f"></script>
+<script src="js/movements.js?v=20260510a"></script>
 <script src="js/import.js"></script>
-<script src="js/logs.js"></script>
-<script src="js/outsource.js"></script>
+<script src="js/logs.js?v=20260524h"></script>
+<script src="js/outsource.js?v=20260510c"></script>
 <script src="js/sales.js"></script>
-<script src="js/shipping.js"></script>
-<script src="js/trace.js?v=20260423a"></script>
-<script src="js/split.js"></script>
-<script src="js/merge.js"></script>
+<script src="js/shipping.js?v=20260510a"></script>
+<script src="js/trace.js?v=20260524d"></script>
+<script src="js/split.js?v=20260510a"></script>
+<script src="js/merge.js?v=20260510b"></script>
 <script src="js/users.js"></script>
-<script src="js/warehouse-stock.js"></script>
+<script src="js/warehouse-stock.js?v=20260510a"></script>
 
 <script>
   /* 小螢幕側欄抽屜：漢堡鈕、遮罩、Esc；navigate() 會呼叫 closeSidebarDrawer */

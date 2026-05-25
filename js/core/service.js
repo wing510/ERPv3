@@ -62,16 +62,27 @@ function erpDbgLog_(payload) {
     try{ cfg = window.__ERP_CONFIG__ || null; }catch(_e2){}
     var url = cfg && typeof cfg.DBG_INGEST_URL === "string" ? String(cfg.DBG_INGEST_URL || "").trim() : "";
     if(!url) return;
+    var sid = "";
+    try{
+      sid = String(cfg && cfg.DBG_SESSION_ID || "").trim();
+      if(!sid){
+        sid = String(window.__ERP_DBG_SESSION_ID__ || "").trim();
+      }
+      if(!sid){
+        sid = "dbg-" + Date.now() + "-" + Math.floor(Math.random() * 100000);
+        window.__ERP_DBG_SESSION_ID__ = sid;
+      }
+    }catch(_eSid){ sid = ""; }
     fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Debug-Session-Id": "c12007"
+        ...(sid ? { "X-Debug-Session-Id": sid } : {})
       },
       body: JSON.stringify(
         Object.assign(
           {
-            sessionId: "c12007",
+            sessionId: sid,
             timestamp: Date.now()
           },
           payload || {}
@@ -86,8 +97,6 @@ try {
     window.__ERP_DBG_HOOKED__ = "1";
     window.addEventListener("error", function (ev) {
       erpDbgLog_({
-        runId: "pre-fix",
-        hypothesisId: "H4",
         location: "js/core/service.js:hook:error",
         message: "window error",
         data: {
@@ -101,8 +110,6 @@ try {
     window.addEventListener("unhandledrejection", function (ev) {
       const r = ev && ev.reason;
       erpDbgLog_({
-        runId: "pre-fix",
-        hypothesisId: "H4",
         location: "js/core/service.js:hook:unhandledrejection",
         message: "unhandled rejection",
         data: {
@@ -161,6 +168,46 @@ function formatCallApiUserMessage_(err) {
     return (
       "資料已被其他人或其他分頁更新，系統已安全擋下這次送出。\n\n" +
       "請先按「Load」重新載入最新狀態，再重新確認數量後送出。"
+    );
+  }
+
+  if (/forbidden\s*\(transactional\s+table\)\s*:\s*use\s+bundle\/command/i.test(fullText)) {
+    return (
+      "此資料屬於「交易型資料」，為避免庫存/追溯不一致，系統已禁止直接新增/修改/刪除。\n\n" +
+      "建議：請改走該流程的「過帳/作廢」或對應的命令（bundle/command）操作；若你是在做特殊作業（如合批/拆批/加工回沖），請回報管理員補齊對應命令後再開放。"
+    );
+  }
+
+  if (
+    /has\s+receipts\.\s+only\s+remark\/document_link\s+is\s+allowed/i.test(fullText) ||
+    /already\s+received\.\s+only\s+remark\s+is\s+allowed/i.test(fullText) ||
+    /import\s+document\s+has\s+receipts\.\s+only\s+remark\/document_link\s+is\s+allowed/i.test(fullText) ||
+    /import\s+item\s+already\s+received\.\s+only\s+remark\s+is\s+allowed/i.test(fullText) ||
+    /already\s+shipped\.\s+only\s+remark\s+is\s+allowed/i.test(fullText) ||
+    /item\s+already\s+shipped\.\s+only\s+remark\s+is\s+allowed/i.test(fullText)
+  ) {
+    return (
+      "此單據已產生下游紀錄（已收貨/已出貨），為避免追溯不一致，系統僅允許更新「備註」（與少數非結構欄位）。\n\n" +
+      "建議：若要改數量/品項，請改走對應的更正/作廢流程，或先確認是否需要新開單據。"
+    );
+  }
+
+  if (
+    /has\s+receipts\.\s+creating\s+new\s+items\s+is\s+not\s+allowed/i.test(fullText) ||
+    /import\s+document\s+has\s+receipts\.\s+creating\s+new\s+items\s+is\s+not\s+allowed/i.test(fullText) ||
+    /already\s+shipped\.\s+creating\s+new\s+items\s+is\s+not\s+allowed/i.test(fullText) ||
+    /\bis\s+(cancelled|closed|posted|shipped)\.\s+creating\s+new\s+items\s+is\s+not\s+allowed/i.test(fullText)
+  ) {
+    return (
+      "此單據已產生下游紀錄（已收貨/已出貨），因此禁止再新增明細，避免追溯不一致。\n\n" +
+      "建議：如需新增品項，請改用新單據或走更正流程；若不確定，請先向管理員確認作業規範。"
+    );
+  }
+
+  if (/\bis\s+(cancelled|closed|posted|shipped)\.\s+only\s+remark/i.test(fullText)) {
+    return (
+      "此單據目前已是終態（已關閉/已作廢/已過帳），因此僅允許更新「備註」（與少數非結構欄位）。\n\n" +
+      "建議：若要更正數量/品項，請改走作廢/沖銷/更正流程，或開新單據。"
     );
   }
 
@@ -611,8 +658,6 @@ async function callAPI(params, options = {}){
   try{
     // #region agent log
     erpDbgLog_({
-      runId: "pre-fix",
-      hypothesisId: "H1",
       location: "js/core/service.js:callAPI:enter",
       message: "callAPI enter",
       data: {
@@ -715,8 +760,6 @@ async function callAPI(params, options = {}){
     try{
       const t1 = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
       erpDbgLog_({
-        runId: "pre-fix",
-        hypothesisId: "H1",
         location: "js/core/service.js:callAPI:ok",
         message: "callAPI ok",
         data: {
@@ -756,8 +799,6 @@ async function callAPI(params, options = {}){
     try{
       const t1 = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
       erpDbgLog_({
-        runId: "pre-fix",
-        hypothesisId: "H2",
         location: "js/core/service.js:callAPI:err",
         message: "callAPI error",
         data: {

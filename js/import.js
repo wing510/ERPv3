@@ -362,7 +362,10 @@ function updateImportFlowHint_(){
   const el = document.getElementById("importFlowHint");
   if(!el) return;
   if(importEditing && importDocReadOnly){
-    el.textContent = "報單：已載入 · 已有收貨 · 主檔／明細備註可改";
+    el.textContent =
+      (typeof window.erpFlowHintText_ === "function")
+        ? window.erpFlowHintText_("報單", "已載入 · 已有收貨", "主檔／明細備註可改")
+        : "報單：已載入 · 已有收貨 · 主檔／明細備註可改";
     return;
   }
   if(importEditing){
@@ -370,25 +373,43 @@ function updateImportFlowHint_(){
     const terminal = st === "CLOSED" || st === "CANCELLED";
     if(terminal){
       const zh = importDocStatusZh_(st) || st;
-      el.textContent = "報單：已載入 · " + zh + " · 僅備註可改";
+      el.textContent =
+        (typeof window.erpFlowHintText_ === "function")
+          ? window.erpFlowHintText_("報單", "已載入 · " + zh, "僅備註可改")
+          : ("報單：已載入 · " + zh + " · 僅備註可改");
       return;
     }
     if(importHeaderEditMode_ && importItemsEditMode_){
-      el.textContent = "報單：已載入 · 編輯中 · 請「儲存主檔／儲存明細」或「取消編輯」";
+      el.textContent =
+        (typeof window.erpFlowHintText_ === "function")
+          ? window.erpFlowHintText_("報單", "已載入 · 編輯中", "請「儲存主檔／儲存明細」或「取消編輯」")
+          : "報單：已載入 · 編輯中 · 請「儲存主檔／儲存明細」或「取消編輯」";
       return;
     }
     if(importHeaderEditMode_){
-      el.textContent = "報單：已載入 · 主檔編輯中 · 請儲存或取消";
+      el.textContent =
+        (typeof window.erpFlowHintText_ === "function")
+          ? window.erpFlowHintText_("報單", "已載入 · 主檔編輯中", "請儲存或取消")
+          : "報單：已載入 · 主檔編輯中 · 請儲存或取消";
       return;
     }
     if(importItemsEditMode_){
-      el.textContent = "報單：已載入 · 明細編輯中 · 請儲存或取消";
+      el.textContent =
+        (typeof window.erpFlowHintText_ === "function")
+          ? window.erpFlowHintText_("報單", "已載入 · 明細編輯中", "請儲存或取消")
+          : "報單：已載入 · 明細編輯中 · 請儲存或取消";
       return;
     }
-    el.textContent = "報單：已載入 · 未收貨 · 請先「編輯主檔／編輯明細」再儲存";
+    el.textContent =
+      (typeof window.erpFlowHintText_ === "function")
+        ? window.erpFlowHintText_("報單", "已載入 · 未收貨", "請先「編輯主檔／編輯明細」再儲存")
+        : "報單：已載入 · 未收貨 · 請先「編輯主檔／編輯明細」再儲存";
     return;
   }
-  el.textContent = "報單：新單 · 填主檔與明細後按「建立」寫入";
+  el.textContent =
+    (typeof window.erpFlowHintText_ === "function")
+      ? window.erpFlowHintText_("報單", "新單", "填主檔與明細後按「建立」寫入")
+      : "報單：新單 · 填主檔與明細後按「建立」寫入";
 }
 
 function importSyncFormLocks_(){
@@ -1065,11 +1086,13 @@ function selectImportItemDbRow_(importItemId){
       showToast("已帶入明細（可修改後調整列表，或「儲存明細」寫回）");
       return;
     }
-    showToast(
-      canEditQty
-        ? "已帶入明細（僅改備註請按「儲存備註」；改數量請先「編輯明細」）"
-        : "已帶入明細（僅改備註請按「儲存備註」）"
-    );
+    const hint =
+      (typeof window.erpHintPickedLineText_ === "function")
+        ? window.erpHintPickedLineText_({ canEditStructure: !!canEditQty, needsEditItemsFirst: true })
+        : (canEditQty
+          ? "已帶入明細（僅改備註請按「儲存備註」；改數量請先「編輯明細」）"
+          : "已帶入明細（僅改備註請按「儲存備註」）");
+    showToast(hint);
   })();
 }
 
@@ -1586,6 +1609,9 @@ async function createImportReceiptAndLots(){
   showToast("此舊收貨流程已停用，請改用 Receive →「產生批次」進行收貨過帳。", "error");
   try{ if(typeof navigate === "function") navigate("receive"); }catch(_e4){}
   return;
+
+  // Phase 1（交易一致性）：以下 legacy 寫入路徑會直接呼叫 createRecord(updateGeneric/createGeneric)，
+  // 在後端已被視為 transactional table 而封鎖。保留程式碼僅供歷史參考，但永遠不會執行到此處。
 
   const import_doc_id = (document.getElementById("import_doc_id")?.value || "").trim();
   if(!import_doc_id) return showToast("請先載入或建立一張報單","error");

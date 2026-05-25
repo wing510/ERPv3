@@ -27,6 +27,10 @@
     try{
       var cfg = window.__ERP_CONFIG__ || null;
       var id = cfg && typeof cfg.GOOGLE_CLIENT_ID === "string" ? String(cfg.GOOGLE_CLIENT_ID || "").trim() : "";
+      // 防呆：曾出現誤貼/快取導致 client id 變成 *.apps.googleusercontentcontent.com（多了 content）
+      if(id && id.indexOf("googleusercontentcontent.com") !== -1){
+        id = id.replace("googleusercontentcontent.com","googleusercontent.com");
+      }
       return id;
     }catch(_e){
       return "";
@@ -366,7 +370,7 @@
     var loginForm = document.getElementById("loginForm");
     if(!overlay || !input || !pwInput || !btnSubmit || !btnClear) return;
 
-    // 預設：只允許 Google 登入；帳密登入（救火）需 config 開關手動打開
+    // 帳密登入（救火）：由使用者手動勾選「管理者」才顯示
     try{
       var allowPwCfg = getAllowPasswordLogin_();
       if(adminToggleWrap) adminToggleWrap.style.display = allowPwCfg ? "" : "none";
@@ -378,6 +382,7 @@
       }
 
       function ensurePasswordAreaVisibility_(){
+        // 預設不勾；只有手動勾選才顯示帳密區
         var allowPw = allowPwCfg && !!(adminToggle && adminToggle.checked);
         if(pwWrap) pwWrap.style.display = allowPw ? "" : "none";
         if(pwActions) pwActions.style.display = allowPw ? "" : "none";

@@ -15,7 +15,13 @@ async function loadInventoryMovementAvailableMap_(){
     // 後端可能回：{ data: map } 或直接把 map 展開在頂層（success:true, LOT-xxx: n, ...）
     let map = result?.data;
     if(map && typeof map === "object" && !Array.isArray(map)) {
-      return { map: map || {}, failed: false };
+      return {
+        map: map || {},
+        failed: false,
+        missingCount: Number(result.missing_movement_count ?? 0),
+        missingLotIds: Array.isArray(result.missing_lot_ids) ? result.missing_lot_ids : [],
+        balanceSource: String(result.balance_source || "")
+      };
     }
     // 若沒有 data，就嘗試從頂層抽出（排除 success/errors）
     const top = (result && typeof result === "object") ? result : {};
@@ -92,6 +98,9 @@ async function loadInventoryCoreData_(options = {}){
     warehouses: Array.isArray(warehouses) ? warehouses : [],
     movements: Array.isArray(movements) ? movements : [],
     movementAvailableByLotId: avail?.map || {},
+    missingMovementCount: Number(avail?.missingCount ?? 0),
+    missingMovementLotIds: avail?.missingLotIds || [],
+    balanceSource: String(avail?.balanceSource || ""),
     movementLoadFailed,
     loaded_at: Date.now()
   };

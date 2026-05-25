@@ -82,7 +82,8 @@ async function loadSplitCaches(){
       `<option value="">請選擇</option>` +
       lots.map(l => {
         const av = splitGetAvailable(l.lot_id);
-        return `<option value="${l.lot_id}" data-product="${l.product_id}" data-unit="${l.unit}" data-av="${av}">${l.lot_id} 可用:${av}</option>`;
+        const avText = (typeof invFormatAvailableText_ === "function") ? invFormatAvailableText_(av) : String(av ?? "--");
+        return `<option value="${l.lot_id}" data-product="${l.product_id}" data-unit="${l.unit}" data-av="${av}">${l.lot_id} 可用:${avText}</option>`;
       }).join("");
   }
   splitLoadInFlight_ = false;
@@ -94,14 +95,10 @@ async function loadSplitCaches(){
 
 function splitGetAvailable(lotId){
   const id = String(lotId || "");
-  if (!id) return 0;
+  if (!id) return null;
   const hit = splitAvailByLotId_[id];
-  if (hit != null) return Number(hit || 0);
-  if (splitMovementLoadFailed_) {
-    const lot = (splitLots || []).find(l => String(l.lot_id || "") === id);
-    return Number(lot?.qty || 0);
-  }
-  return 0;
+  if (hit !== undefined) return hit;
+  return null;
 }
 
 function onSelectSplitSource(){
@@ -221,6 +218,9 @@ async function postSplit(triggerEl){
   const srcLot = splitLots.find(l => l.lot_id === source);
   if(!srcLot) return showToast("找不到來源 Lot","error");
   const av = splitGetAvailable(source);
+  if(typeof invIsMissingMovement_ === "function" && invIsMissingMovement_(av)){
+    return showToast("來源 Lot 缺 movement（請先補齊入庫/異動紀錄）", "error");
+  }
   const total = splitDraft.reduce((sum, x) => sum + Number(x.qty||0), 0);
   if(total > av) return showToast("拆出總量不可超過可用量","error");
 
@@ -230,82 +230,19 @@ async function postSplit(triggerEl){
   splitPosting_ = true;
   setSplitButtons_();
   try {
-  // source OUT
-  await createRecord("inventory_movement", {
-    movement_id: generateId("MV"),
-    movement_type: "OUT",
-    lot_id: source,
-    product_id: srcLot.product_id,
-    warehouse_id: String(srcLot.warehouse_id || "MAIN").trim().toUpperCase() || "MAIN",
-    qty: String(-Math.abs(total)),
-    unit: srcLot.unit,
-    ref_type: "SPLIT",
+  // Phase 1（交易一致性）：拆批改走後端 bundle，一次完成 movement/lot/relation，避免前端分段寫入造成不同步
+  await callAPI({
+    action: "post_split_bundle",
+    source_lot_id: source,
     ref_id: refId,
-    remark: "",
-    created_by: getCurrentUser(),
-    created_at: nowIso16(),
-    updated_by: "",
-    updated_at: "",
-    system_remark: `Split OUT: ${refId}`,
-  });
-
-  // create new lots + IN + relations
-  for(let idx=0; idx<splitDraft.length; idx++){
-    const it = splitDraft[idx];
-
-    await createRecord("lot", {
-      lot_id: it.new_lot_id,
-      product_id: srcLot.product_id,
-      warehouse_id: String(srcLot.warehouse_id || "MAIN").trim().toUpperCase() || "MAIN",
-      source_type: "SPLIT",
-      source_id: refId,
+    lines_json: JSON.stringify((splitDraft || []).map((it) => ({
+      new_lot_id: it.new_lot_id,
       qty: String(it.qty),
       unit: it.unit,
-      type: srcLot.type,
-      status: srcLot.status, // 沿用 QA 狀態
-      inventory_status: "ACTIVE",
-      received_date: nowIso16(),
-      manufacture_date: srcLot.manufacture_date || "",
-      expiry_date: srcLot.expiry_date || "",
-      created_by: getCurrentUser(),
-      created_at: nowIso16(),
-      updated_by: "",
-      updated_at: "",
-      remark: it.remark || "",
-      system_remark: `Split from ${source}`
-    });
-
-    await createRecord("inventory_movement", {
-      movement_id: generateId("MV"),
-      movement_type: "IN",
-      lot_id: it.new_lot_id,
-      product_id: srcLot.product_id,
-      warehouse_id: String(srcLot.warehouse_id || "MAIN").trim().toUpperCase() || "MAIN",
-      qty: String(Math.abs(it.qty)),
-      unit: it.unit,
-      ref_type: "SPLIT",
-      ref_id: refId,
-      remark: "",
-      created_by: getCurrentUser(),
-      created_at: nowIso16(),
-      updated_by: "",
-      updated_at: "",
-      system_remark: `Split IN: ${refId}`,
-    });
-
-    await createRecord("lot_relation", {
-      relation_id: `REL-${refId}-${String(idx+1).padStart(3,"0")}`,
-      relation_type: "SPLIT",
-      from_lot_id: source,
-      to_lot_id: it.new_lot_id,
-      qty: String(it.qty),
-      unit: it.unit,
-      ref_type: "SPLIT",
-      ref_id: refId,
-      created_by: getCurrentUser(),
-      created_at: nowIso16()
-    });
-  }
+      remark: it.remark || ""
+    }))),
+    idempotency_key: `SPLIT:${source}:${refId}`
+  }, { method: "POST" });
 
   showToast("拆批完成");
   await loadSplitCaches();

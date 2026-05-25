@@ -565,7 +565,8 @@ function formatProcLotOptionLabel_(lot, available){
   const lotId = String(lot?.lot_id || "");
   const productId = String(lot?.product_id || "");
   const whText = procWarehouseLabelByLot_(lot) || "";
-  return `${lotId} (${productId}) 可用:${available}` + (whText ? ` | ${whText}` : "");
+  const avText = (typeof invFormatAvailableText_ === "function") ? invFormatAvailableText_(available) : String(available ?? "--");
+  return `${lotId} (${productId}) 可用:${avText}` + (whText ? ` | ${whText}` : "");
 }
 
 function formatProcSourceText_(lot){
@@ -893,11 +894,10 @@ function procWarehouseLabelByLot_(lot){
 
 function procGetAvailable(lotId){
   const id = String(lotId || "");
-  if(!id) return 0;
+  if(!id) return null;
   const hit = procAvailableByLotId?.[id];
-  if(hit != null) return Number(hit || 0);
-  const lot = (procLots || []).find(l => String(l.lot_id || "") === id) || null;
-  return Number(lot?.qty || 0);
+  if(hit !== undefined) return hit;
+  return null;
 }
 
 function initProcDropdowns(){
@@ -1307,6 +1307,9 @@ function addProcInputDraft(){
   if(!lot) return showToast("找不到 Lot","error");
 
   const available = procGetAvailable(lot_id);
+  if(typeof invIsMissingMovement_ === "function" && invIsMissingMovement_(available)){
+    return showToast("此 Lot 缺 movement（請先補齊入庫/異動紀錄）", "error");
+  }
   if(qty > available) return showToast("投料不可超過可用量","error");
 
   procInputs.push({
@@ -2363,8 +2366,16 @@ async function renderProcessOrders(){
 
 // 讓產出損耗提示即時更新
 document.addEventListener("input", (e)=>{
-  if(e.target?.id === "proc_output_qty"){
+  const id = e && e.target ? String(e.target.id || "") : "";
+  if(id === "proc_output_qty"){
     updateLossHint();
+    try{ setProcButtons_(); }catch(_e){}
+    return;
+  }
+  if(id === "proc_input_qty"){
+    // 投料數量變更時，同步更新按鈕可用狀態（避免填了數量仍顯示 disabled）
+    try{ setProcButtons_(); }catch(_e){}
+    return;
   }
 });
 

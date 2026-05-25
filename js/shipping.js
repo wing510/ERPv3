@@ -380,24 +380,38 @@ function updateShipStatusHint_(){
   if(shipEditing && shipReadOnlyDraft){
     const st = shipNormStatus_(shipLoadedStatus_);
     const zh = shipStatusZh_(st) || st;
+    const hint =
+      st === "POSTED" ? ["已載入 · " + zh, "主檔／明細備註可改"] :
+      st === "CANCELLED" ? ["已載入 · " + zh, "僅主檔備註可改"] :
+      ["已載入 · " + zh, "整批已鎖"];
     el.textContent =
-      st === "POSTED" ? "出貨：已載入 · " + zh + " · 主檔／明細備註可改" :
-      st === "CANCELLED" ? "出貨：已載入 · " + zh + " · 僅主檔備註可改" :
-      "出貨：已載入 · " + zh + " · 整批已鎖";
+      (typeof window.erpFlowHintText_ === "function")
+        ? window.erpFlowHintText_("出貨", hint[0], hint[1])
+        : ("出貨：" + hint[0] + " · " + hint[1]);
     if(invEl){
+      const invHint =
+        st === "POSTED" ? ["已過帳", "已扣庫"] :
+        st === "CANCELLED" ? ["已作廢", "已反沖"] :
+        ["未過帳", "未扣庫"];
       invEl.textContent =
-        st === "POSTED" ? "扣庫：已過帳 · 已扣庫" :
-        st === "CANCELLED" ? "扣庫：已作廢 · 已反沖" :
-        "扣庫：未過帳 · 未扣庫";
+        (typeof window.erpFlowHintText_ === "function")
+          ? window.erpFlowHintText_("扣庫", invHint[0], invHint[1])
+          : ("扣庫：" + invHint[0] + " · " + invHint[1]);
       invEl.style.color =
         st === "POSTED" ? "#166534" :
         st === "CANCELLED" ? "#991b1b" :
         "#92400e";
     }
   }else{
-    el.textContent = "出貨：新單 · 填主檔與明細後按「建立並過帳出貨」扣庫";
+    el.textContent =
+      (typeof window.erpFlowHintText_ === "function")
+        ? window.erpFlowHintText_("出貨", "新單", "填主檔與明細後按「建立並過帳出貨」扣庫")
+        : "出貨：新單 · 填主檔與明細後按「建立並過帳出貨」扣庫";
     if(invEl){
-      invEl.textContent = "扣庫：未過帳 · 過帳後才扣庫";
+      invEl.textContent =
+        (typeof window.erpFlowHintText_ === "function")
+          ? window.erpFlowHintText_("扣庫", "未過帳", "過帳後才扣庫")
+          : "扣庫：未過帳 · 過帳後才扣庫";
       invEl.style.color = "#92400e";
     }
   }
@@ -555,6 +569,7 @@ function shipIsLotEligibleForShip_(lot){
     if(typeof invIsExpired_ === "function" && invIsExpired_(lot.expiry_date)) return false;
   }catch(_e){}
   const av = shipGetAvailable(lot.lot_id);
+  if(typeof invIsMissingMovement_ === "function" && invIsMissingMovement_(av)) return false;
   return Number(av || 0) > 1e-9;
 }
 
@@ -580,7 +595,9 @@ function shipAutoAllocateLots_(productId, qtyNeeded){
   const lines = [];
   for(const lot of candidates){
     if(!(need > 1e-9)) break;
-    const av = Number(shipGetAvailable(lot.lot_id) || 0);
+    const raw = shipGetAvailable(lot.lot_id);
+    if(typeof invIsMissingMovement_ === "function" && invIsMissingMovement_(raw)) continue;
+    const av = Number(raw || 0);
     if(!(av > 1e-9)) continue;
     const take = Math.min(av, need);
     lines.push({ lot, qty: take });
@@ -720,18 +737,19 @@ function shipWarehouseLabelByLot_(lot){
 
 function shipGetAvailable(lotId){
   const id = String(lotId || "");
-  if(!id) return 0;
+  if(!id) return null;
   const hit = shipAvailableByLotId_?.[id];
-  if(hit != null) return Number(hit || 0);
-  const lot = (shipLots || []).find(l => String(l.lot_id || "") === id) || null;
-  return Number(lot?.qty || 0);
+  // 缺 movement：map 會是 null（顯示 --，且禁止用於扣庫/出貨）
+  if(hit !== undefined) return hit;
+  return null;
 }
 
 function formatShipLotOptionLabel_(lot, available){
   const lotId = String(lot?.lot_id || "");
   const productText = formatShipProductDisplay_(lot?.product_id || "") || "";
   const prodPart = productText ? ` ${productText}` : "";
-  return `${lotId}${prodPart} 可用:${available}`;
+  const avText = (typeof invFormatAvailableText_ === "function") ? invFormatAvailableText_(available) : String(available ?? "--");
+  return `${lotId}${prodPart} 可用:${avText}`;
 }
 
 function formatShipLotSourceText_(lot){
@@ -806,6 +824,7 @@ function shipIneligibleReasonForShip_(lot){
     if(typeof invIsExpired_ === "function" && invIsExpired_(lot.expiry_date)) return "已過期";
   }catch(_e){}
   const av = shipGetAvailable(lot.lot_id);
+  if(typeof invIsMissingMovement_ === "function" && invIsMissingMovement_(av)) return "缺 movement（需先補齊入庫/異動紀錄）";
   if(!(Number(av || 0) > 1e-9)) return "可用量為 0";
   return "";
 }
@@ -1078,7 +1097,15 @@ function selectShipDraftRow_(draftId){
   if(qEl) qEl.value = String(it.ship_qty ?? "");
   const rm = document.getElementById("ship_item_remark");
   if(rm) rm.value = String(it.remark || "");
-  showToast("已帶入明細（僅改備註可用「儲存備註」；改數量／Lot 請用「編輯」）");
+  const hint =
+    (typeof window.erpHintPickedLineText_ === "function")
+      ? window.erpHintPickedLineText_({
+          canEditStructure: true,
+          needsEditItemsFirst: false,
+          extraStructureHint: "改數量／Lot 請用「編輯」"
+        })
+      : "已帶入明細（僅改備註請按「儲存備註」；改數量／Lot 請用「編輯」）";
+  showToast(hint);
 }
 
 function selectShipSavedRow_(shipmentItemId){
@@ -1090,11 +1117,15 @@ function selectShipSavedRow_(shipmentItemId){
   const rm = document.getElementById("ship_item_remark");
   if(rm) rm.value = String(it.remark || "");
   const pst = shipNormStatus_(shipLoadedStatus_) === "POSTED";
-  showToast(
-    pst
-      ? "已帶入備註（可修改後按「儲存備註」寫回）"
-      : "已帶入備註（此單非已出貨狀態，明細備註無法寫回；可改主檔備註）"
-  );
+  if(pst){
+    const hint2 =
+      (typeof window.erpHintPickedLineText_ === "function")
+        ? window.erpHintPickedLineText_({ canEditStructure: false })
+        : "已帶入明細（僅改備註請按「儲存備註」）";
+    showToast(hint2);
+  }else{
+    showToast("已帶入備註（此單非已出貨狀態，明細備註無法寫回；可改主檔備註）");
+  }
 }
 
 function beginEditShipDraft_(draftId){
@@ -1273,6 +1304,9 @@ async function addShipItemDraft(){
   const lot = shipLots.find(l => l.lot_id === lot_id);
   if(!lot) return showToast("找不到 Lot","error");
   const av = shipGetAvailable(lot_id);
+  if(typeof invIsMissingMovement_ === "function" && invIsMissingMovement_(av)){
+    return showToast("此 Lot 缺 movement（請先補齊入庫/異動紀錄）", "error");
+  }
   if(qty > av) return showToast("出貨不可超過可用量","error");
   if(so_id && so_item_id && soi){
     const remain = Math.max(0, Number(soi.order_qty||0) - Number(soi.shipped_qty||0));

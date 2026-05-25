@@ -31,6 +31,7 @@
         <option value="REJECTED">REJECTED（QA已退回）</option>
       </select>
       <button class="btn-secondary" onclick="resetLotsSearch()">重設</button>
+      <button type="button" id="lotsRebuildBalanceBtn" class="btn-secondary" style="display:none;margin-left:6px;" title="由 inventory_movement 全表重算 lot_balance 快照（僅 ADMIN）" onclick="lotsRebuildBalanceClick()">重建庫存快照</button>
 
     </div>
 
@@ -54,8 +55,8 @@
           <tr>
             <th>Lot ID/產品(規格)</th>
             <th>倉別</th>
-            <th>總數</th>
-            <th>可用</th>
+            <th title="收貨／建檔時寫入 lot.qty，僅供對照，不作扣庫依據">原始</th>
+            <th title="inventory_movement 加總；無流水顯示 --">可用</th>
             <th>製造日</th>
             <th>有效期</th>
             <th>庫存狀態</th>

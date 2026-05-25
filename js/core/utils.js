@@ -149,6 +149,53 @@ function syncErpQtyUnitSuffix_(hiddenId, suffixId){
 }
 
 /* =========================================================
+   Phase 3：跨模組一致文案（提示/導引）
+========================================================= */
+
+/**
+ * 「已帶入明細」標準提示（供 Sales/Purchase/Import 對齊）
+ * opts:
+ * - canEditStructure: 是否允許改數量/單價等結構
+ * - needsEditItemsFirst: 是否必須先按「編輯明細」才可改結構
+ * - extraStructureHint(optional): 結構修改的額外提示（例如 Sales 需要「套用至本列」）
+ */
+function erpHintPickedLineText_(opts){
+  const o = opts && typeof opts === "object" ? opts : {};
+  const canEdit = !!o.canEditStructure;
+  const needEditFirst = !!o.needsEditItemsFirst;
+  const extra = String(o.extraStructureHint || "").trim();
+  if(!canEdit){
+    return "已帶入明細（僅改備註請按「儲存備註」）";
+  }
+  const struct =
+    (needEditFirst ? "改數量請先「編輯明細」" : "可修改數量/結構") + (extra ? "；" + extra : "");
+  return "已帶入明細（僅改備註請按「儲存備註」；" + struct + "）";
+}
+
+try{
+  window.erpHintPickedLineText_ = erpHintPickedLineText_;
+}catch(_e){}
+
+/**
+ * 表單 FlowHint 統一句型（供 Sales/Purchase/Import/Shipping 文字對齊）
+ * - moduleLabel: "銷售" / "採購" / "報單" / "出貨"
+ * - stateText: 例如 "已載入 · 未收貨"、"已載入 · 編輯中"、"新單"
+ * - actionHint(optional): 例如 "請先「編輯主檔／編輯明細」再儲存"
+ */
+function erpFlowHintText_(moduleLabel, stateText, actionHint){
+  const m = String(moduleLabel || "").trim();
+  const s = String(stateText || "").trim();
+  const a = String(actionHint || "").trim();
+  if(!m) return (s ? (s + (a ? " · " + a : "")) : (a || ""));
+  if(!s) return m + "：" + (a ? " " + a : "");
+  return m + "：" + s + (a ? " · " + a : "");
+}
+
+try{
+  window.erpFlowHintText_ = erpFlowHintText_;
+}catch(_e){}
+
+/* =========================================================
    主檔狀態（ACTIVE/INACTIVE）修改權限：僅 CEO/GA/ADMIN
 ========================================================= */
 

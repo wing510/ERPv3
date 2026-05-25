@@ -545,13 +545,17 @@ function updateSOStatusHint_(){
     const st = String(soLoadedStatus_ || "OPEN").trim().toUpperCase();
     const label = typeof termLabel === "function" ? termLabel(st) : st;
     if(shipEl){
-      shipEl.textContent =
-        st === "SHIPPED" ? "出貨：已載入 · 已出畢 · 備註可改" :
+      const shipHint =
+        st === "SHIPPED" ? ["已載入 · 已出畢", "備註可改"] :
         st === "PARTIAL"
           ? (soAllowFullLineOps_()
-            ? "出貨：已載入 · 部分出貨"
-            : "出貨：已載入 · 部分出貨 · 僅備註")
-        : "出貨：已載入 · 未出貨";
+            ? ["已載入 · 部分出貨", ""]
+            : ["已載入 · 部分出貨", "僅備註"])
+        : ["已載入 · 未出貨", ""];
+      shipEl.textContent =
+        (typeof window.erpFlowHintText_ === "function")
+          ? window.erpFlowHintText_("出貨", shipHint[0], shipHint[1])
+          : ("出貨：" + shipHint[0] + (shipHint[1] ? " · " + shipHint[1] : ""));
       shipEl.style.color = st === "SHIPPED" ? "#166534" : "#64748b";
     }
     const shortLocked = "銷售：已載入 · " + (label || st) + " · 整批已鎖 · 備註可改";
@@ -563,18 +567,24 @@ function updateSOStatusHint_(){
       el.textContent = shortLocked;
       return;
     }
-    let editHint = " · 請先「編輯主檔／編輯明細」再儲存";
+    let editHint = "請先「編輯主檔／編輯明細」再儲存";
     if(soHeaderEditMode_ && soItemsEditMode_){
-      editHint = " · 編輯中：請「儲存主檔／儲存明細」或「取消編輯」";
+      editHint = "編輯中：請「儲存主檔／儲存明細」或「取消編輯」";
     }else if(soHeaderEditMode_){
-      editHint = " · 主檔編輯中：請儲存或取消";
+      editHint = "主檔編輯中：請儲存或取消";
     }else if(soItemsEditMode_){
-      editHint = " · 明細編輯中：請儲存或取消";
+      editHint = "明細編輯中：請儲存或取消";
     }
-    el.textContent = "銷售：已載入 · " + (label || st) + editHint;
+    el.textContent =
+      (typeof window.erpFlowHintText_ === "function")
+        ? window.erpFlowHintText_("銷售", "已載入 · " + (label || st), editHint)
+        : ("銷售：已載入 · " + (label || st) + " · " + editHint);
     return;
   }
-  el.textContent = "銷售：新單 · 填妥後按「建立」";
+  el.textContent =
+    (typeof window.erpFlowHintText_ === "function")
+      ? window.erpFlowHintText_("銷售", "新單", "填妥後按「建立」")
+      : "銷售：新單 · 填妥後按「建立」";
   if(shipEl){
     shipEl.textContent = "出貨：未載入 · 請先 Load 銷售單";
     shipEl.style.color = "#92400e";
@@ -831,11 +841,18 @@ function selectSOItemDbRow_(soItemId){
   calcSOAmount();
   const rm = document.getElementById("so_item_remark");
   if(rm) rm.value = String(it.remark || "");
-  showToast(
-    soAllowFullLineOps_()
-      ? "已帶入明細：改備註後按「儲存備註」；改數量／單價須先按「編輯明細」再按「套用至本列」。"
-      : "已帶入明細：僅可改備註，請按「儲存備註」。"
-  );
+  const canEdit = soAllowFullLineOps_();
+  const hint =
+    (typeof window.erpHintPickedLineText_ === "function")
+      ? window.erpHintPickedLineText_({
+          canEditStructure: !!canEdit,
+          needsEditItemsFirst: true,
+          extraStructureHint: "改數量／單價後請按「套用至本列」"
+        })
+      : (canEdit
+        ? "已帶入明細（僅改備註請按「儲存備註」；改數量／單價請先「編輯明細」；改數量／單價後請按「套用至本列」）"
+        : "已帶入明細（僅改備註請按「儲存備註」）");
+  showToast(hint);
   soSyncSOItemAddButton_();
 }
 

@@ -63,7 +63,21 @@ function mvRoleLabel_(role){
 function setMvHeaderHint_(text, tone){
   const el = document.getElementById("mvHeaderHint");
   if(!el) return;
-  el.textContent = String(text || "");
+  // Phase 3：統一句型（若 utils 尚未載入，fallback 原字串）
+  try{
+    const raw = String(text || "");
+    if(typeof window.erpFlowHintText_ === "function"){
+      // 允許呼叫端直接傳 "狀態｜提示"；沒有就只當狀態
+      const parts = raw.split("｜");
+      const state = String(parts[0] || "").trim();
+      const hint = String(parts[1] || "").trim();
+      el.textContent = window.erpFlowHintText_("庫存異動", state, hint);
+    }else{
+      el.textContent = raw;
+    }
+  }catch(_e){
+    el.textContent = String(text || "");
+  }
   const t = String(tone || "").toLowerCase();
   el.style.color =
     t === "error" ? "#b91c1c" :
@@ -75,7 +89,19 @@ function setMvHeaderHint_(text, tone){
 function setMvLotHint_(text, tone){
   const el = document.getElementById("mvLotHint");
   if(!el) return;
-  el.textContent = String(text || "");
+  try{
+    const raw = String(text || "");
+    if(typeof window.erpFlowHintText_ === "function"){
+      const parts = raw.split("｜");
+      const state = String(parts[0] || "").trim();
+      const hint = String(parts[1] || "").trim();
+      el.textContent = window.erpFlowHintText_("Lot 下拉", state, hint);
+    }else{
+      el.textContent = raw;
+    }
+  }catch(_e){
+    el.textContent = String(text || "");
+  }
   const t = String(tone || "").toLowerCase();
   el.style.color =
     t === "error" ? "#b91c1c" :
@@ -85,8 +111,9 @@ function setMvLotHint_(text, tone){
 }
 
 async function movementsInit(){
-  setMvHeaderHint_("資料狀態：載入中…", "warn");
-  setMvLotHint_("Lot 下拉：載入中…", "warn");
+  // 統一句型：模組：狀態 · 提示（使用 "｜" 分隔狀態與提示）
+  setMvHeaderHint_("載入中…｜請稍候", "warn");
+  setMvLotHint_("載入中…｜請稍候", "warn");
   await refreshMovementData();
   await initMovementLotDropdown();
   await mvInitWarehouseDropdown_();
@@ -217,7 +244,7 @@ function mvOnTransferToggleChange_(){
       if(isTransfer){
         sel.disabled = true;
         sel.innerHTML = `<option value="">載入中…</option>`;
-        setMvLotHint_("Lot 下拉：載入中…", "warn");
+        setMvLotHint_("載入中…｜請稍候", "warn");
       }
       setTimeout(function(){
         initMovementLotDropdown()
@@ -257,11 +284,11 @@ function mvFillTransferAllQty_(){
 async function refreshMovementData(){
   if(mvLoadInFlight_){
     mvPendingReload_ = true;
-    setMvHeaderHint_("資料狀態：載入中…（已排隊更新）", "warn");
+    setMvHeaderHint_("載入中…｜已排隊更新", "warn");
     return;
   }
   mvLoadInFlight_ = true;
-  setMvHeaderHint_("資料狀態：載入中…", "warn");
+  setMvHeaderHint_("載入中…｜請稍候", "warn");
   const mvTb = document.getElementById("movementTableBody");
   if(mvTb) setTbodyLoading_(mvTb, 6);
   try{
@@ -333,7 +360,7 @@ async function refreshMovementData(){
   const nLots = Array.isArray(mvLots) ? mvLots.length : 0;
   const nMv = Array.isArray(mvMovements) ? mvMovements.length : 0;
   const availText = mvAvailMapOk_ ? "可用量：已載入" : "可用量：fallback（可能較慢）";
-  setMvHeaderHint_(`資料狀態：已載入 — Lot ${nLots} 筆／異動 ${nMv} 筆（${availText}）`, mvAvailMapOk_ ? "ok" : "warn");
+  setMvHeaderHint_(`已載入｜Lot ${nLots} 筆／異動 ${nMv} 筆（${availText}）`, mvAvailMapOk_ ? "ok" : "warn");
   }catch(err){
     // 失敗也要收尾，避免永遠停在「載入中」
     mvLots = [];
@@ -345,8 +372,8 @@ async function refreshMovementData(){
     mvAvailByLotId_ = {};
     mvAvailMapOk_ = false;
     try{
-      setMvHeaderHint_("資料狀態：載入失敗（請確認網路連線正常，或重新登入後再試）", "error");
-      setMvLotHint_("Lot 下拉：載入失敗", "error");
+      setMvHeaderHint_("載入失敗｜請確認網路連線正常，或重新登入後再試", "error");
+      setMvLotHint_("載入失敗｜請稍後重試", "error");
     }catch(_eHint){}
     try{
       if(!(err && err.erpApiToastShown)){
@@ -538,13 +565,13 @@ function mvGroupKeyForMovement_(m){
 
 function getMovementAvailableByLotId(lotId){
   const lid = typeof invNormalizeId_ === "function" ? invNormalizeId_(lotId) : String(lotId || "").trim().toUpperCase();
-  if(!lid) return 0;
+  if(!lid) return null;
   if(mvAvailMapOk_ && mvAvailByLotId_ && Object.prototype.hasOwnProperty.call(mvAvailByLotId_, lid)){
-    return Number(mvAvailByLotId_[lid] || 0);
+    return mvAvailByLotId_[lid];
   }
   const rawKey = String(lotId || "").trim();
   if(mvAvailMapOk_ && rawKey && mvAvailByLotId_ && Object.prototype.hasOwnProperty.call(mvAvailByLotId_, rawKey)){
-    return Number(mvAvailByLotId_[rawKey] || 0);
+    return mvAvailByLotId_[rawKey];
   }
   return invAvailableByLotId_(lotId, mvLots, mvMovements);
 }
@@ -936,6 +963,9 @@ async function createMovement(triggerEl){
   }
 
   const available = getMovementAvailableByLotId(lot_id);
+  if(typeof invIsMissingMovement_ === "function" && invIsMissingMovement_(available)){
+    return showToast("此 Lot 缺 movement（請先補齊入庫/異動紀錄）", "error");
+  }
   if(qty > available){
     return showToast("扣庫數量不可超過可用量", "error");
   }
@@ -1031,77 +1061,19 @@ async function transferMovement(triggerEl){
 
   showSaveHint(triggerEl);
   try{
-    // 轉倉後仍歸屬原來源（採購/進口/加工等），避免在 Lots/Movements 分組中「脫離原單」
-    const srcType = String(lot.source_type || "").trim().toUpperCase();
-    const srcId = String(lot.source_id || "").trim();
-
-    await createRecord("lot", {
-      lot_id: newLotId,
-      product_id: lot.product_id || "",
-      warehouse_id: toWh,
-      source_type: srcType || lot.source_type || "",
-      source_id: srcId || lot.source_id || "",
+    // Phase 1（交易一致性）：轉倉改走後端 bundle，一次完成新 Lot + IN/OUT movements，避免分段寫入造成不同步
+    const res = await callAPI({
+      action: "post_transfer_bundle",
+      from_lot_id: lot_id,
+      to_warehouse_id: toWh,
       qty: String(qty),
-      unit: lot.unit || "",
-      type: lot.type || "",
-      status: lot.status || "PENDING",
-      inventory_status: "ACTIVE",
-      received_date: lot.received_date || today,
-      manufacture_date: lot.manufacture_date || "",
-      expiry_date: lot.expiry_date || "",
-      remark: "",
-      created_by: getCurrentUser(),
-      created_at: now,
-      updated_by: "",
-      updated_at: "",
-      system_remark: `轉倉自 ${lot_id}（${fromWhLabel} → ${toWhLabel}）`
-    });
-
-    const outMovement = {
-      movement_id: generateId("MV"),
-      movement_type: "OUT",
-      lot_id: lot_id,
-      product_id: lot.product_id,
-      warehouse_id: fromWh || "",
-      transaction_id: (typeof generateId === "function") ? generateId("TXMV") : ("TXMV-" + Date.now()),
-      parent_ref_type: "TRANSFER",
-      parent_ref_id: newLotId,
-      qty: String(-Math.abs(qty)),
-      unit: lot.unit || "",
-      ref_type: "TRANSFER",
-      ref_id: newLotId,
-      issued_to: "",
       remark: userRemark,
-      created_by: getCurrentUser(),
-      created_at: now,
-      updated_by: "",
-      updated_at: "",
-      system_remark: `轉倉 OUT：${lot_id} → ${newLotId}（${fromWhLabel} → ${toWhLabel}）`
-    };
-    await createRecord("inventory_movement", outMovement);
-
-    const inMovement = {
-      movement_id: generateId("MV"),
-      movement_type: "IN",
-      lot_id: newLotId,
-      product_id: lot.product_id,
-      warehouse_id: toWh,
-      transaction_id: outMovement.transaction_id,
-      parent_ref_type: "TRANSFER",
-      parent_ref_id: newLotId,
-      qty: String(Math.abs(qty)),
-      unit: lot.unit || "",
-      ref_type: "TRANSFER",
-      ref_id: lot_id,
-      issued_to: "",
-      remark: "",
-      created_by: getCurrentUser(),
-      created_at: now,
-      updated_by: "",
-      updated_at: "",
-      system_remark: `轉倉 IN：${newLotId} ← ${lot_id}（${fromWhLabel} → ${toWhLabel}）`
-    };
-    await createRecord("inventory_movement", inMovement);
+      idempotency_key: `TRANSFER:${lot_id}:${toWh}:${String(qty)}:${userRemark}`
+    }, { method: "POST" });
+    const newLotId =
+      (res && res.new_lot_id) ||
+      (res && res.data && res.data.new_lot_id) ||
+      "";
 
     // 轉倉後：強制讓其他頁面下次刷新時拿到最新可用量（避免快取造成兩邊都像有量）
     try{
@@ -1114,13 +1086,7 @@ async function transferMovement(triggerEl){
       }catch(_e){}
     }catch(_e){}
 
-    // 立即反映在畫面（先合併到記憶體，避免後端 recent/快取延遲）
-    mvMergeMovements_([outMovement, inMovement]);
-    renderMovementTable();
-
     await refreshMovementData();
-    // refresh 可能回傳不含最新列（recent 篩選/延遲），再合併一次確保看得到
-    mvMergeMovements_([outMovement, inMovement]);
     await initMovementLotDropdown();
     await mvInitWarehouseDropdown_();
     mvInitIssuedToDropdown_();
@@ -1132,7 +1098,7 @@ async function transferMovement(triggerEl){
       allBtn.disabled = true;
       allBtn.title = "請先選擇 Lot（轉倉模式）";
     }
-    showToast(`已轉倉並產生新 Lot：${newLotId}`);
+    showToast(newLotId ? `已轉倉並產生新 Lot：${newLotId}` : "已轉倉完成");
   }finally{
     hideSaveHint();
   }

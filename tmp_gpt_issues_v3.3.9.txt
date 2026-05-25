@@ -1,0 +1,312 @@
+
+
+--- page 1 ---
+A. 已經開始危險的問題（最高優先）  
+1. Sheet 已經快被當資料庫硬撐 
+你現在很多設計： 
+●​ inventory_movement 
+●​ audit_change 
+●​ shipment_item 
+●​ process_input/output 
+●​ lot_relation 
+都會： 
+高速成長 
+Google Sheet 最大問題不是容量。 
+而是： 
+查詢與 append 速度會越來越慢 
+尤其 Apps Script： 
+●​ getValues() 
+●​ filter() 
+●​ map() 
+●​ appendRow() 
+資料大後會開始卡。 
+你現在真正危險的是： 
+「每次都掃全表」 
+這是目前最大風險。 
+所以： 
+除了 Snapshot， 
+你還需要： 
+
+
+--- page 2 ---
+建立「索引概念」 
+例如： 
+不要： 
+掃全部 shipment_item 找 shipment_id 
+而是： 
+預先建立： 
+shipment_item_by_shipment 
+或 cache map。 
+ 
+2. Bundle transaction 還不是真正 
+transaction 
+你現在： 
+已經開始有： 
+●​ post_shipment_bundle 
+●​ cancel_bundle 
+●​ transfer_bundle 
+這很好。 
+但： 
+Apps Script 沒真正 DB transaction 
+所以現在很容易： 
+A 成功 
+B 失敗 
+變： 
+半成功 
+這也是你之前 shipment 問題根源之一。 
+所以你之後一定要： 
+
+
+--- page 3 ---
+所有 bundle： 
+必須： 
+validate 
+→ write all 
+→ verify 
+→ commit flag 
+至少要做到： 
+可回滾 
+或 
+可重建 
+ 
+3. ID 規則可能會越來越亂 
+你現在很多： 
+●​ movement_id 
+●​ lot_id 
+●​ shipment_id 
+●​ transfer_id 
+如果沒有統一規則， 
+後面 trace 很容易痛苦。 
+建議： 
+所有 ID： 
+固定： 
+PREFIX-YYYYMMDD-流水號 
+例如： 
+LOT-20260511-0001 
+MOV-20260511-0001 
+ 
+
+
+--- page 4 ---
+4. Unit（單位）其實是大雷 
+你文件裡有提到： 
+同產品固定庫存單位 
+這非常正確。 
+因為： 
+保健品超容易單位炸裂 
+例如： 
+●​ kg 
+●​ g 
+●​ cap 
+●​ bottle 
+●​ box 
+如果： 
+movement 沒統一主單位， 
+後面： 
+庫存一定失真 
+所以： 
+你之後一定要： 
+主庫存單位固定 
+其他全部換算。 
+ 
+5. lot relation 還不夠完整 
+你現在： 
+已經有： 
+●​ split 
+●​ merge 
+●​ process 
+
+
+--- page 5 ---
+但： 
+lot genealogy（族譜） 
+可能還不完整。 
+ 
+未來 GMP： 
+很常需要： 
+這批成品 
+用了哪些原料 lot？ 
+甚至： 
+這批原料 
+流去哪些成品？ 
+ 
+所以： 
+relation 必須雙向可追。 
+ 
+ 
+
+
+--- page 6 ---
+B. 現在不痛，但之後一定炸 
+ 
+6. 權限系統可能太薄 
+現在很多 Apps Script ERP： 
+只有： 
+admin/user 
+但 ERP 後面一定需要： 
+●​ 倉庫 
+●​ 業務 
+●​ QA 
+●​ 採購 
+●​ 財務 
+不同權限。 
+ 
+尤其： 
+GMP 很重： 
+誰能作廢？ 
+誰能回沖？ 
+誰能改效期？ 
+ 
+7. 前端狀態管理可能開始混亂 
+你系統功能開始變多後： 
+HTML 單頁很容易： 
+全域變數爆炸 
+ 
+尤其： 
+●​ currentShipment 
+●​ selectedLot 
+
+
+--- page 7 ---
+●​ tempItems 
+●​ draftRows 
+會開始互相污染。 
+ 
+這是： 
+前端技術債 
+ 
+8. API 命名與規格可能不一致 
+你現在： 
+有： 
+●​ generic CRUD 
+●​ bundle command 
+●​ special APIs 
+如果沒統一： 
+後面： 
+維護會越來越亂 
+ 
+建議： 
+分層： 
+CRUD： 
+create/update/delete/get 
+ 
+Command： 
+post_shipment 
+cancel_shipment 
+process_complete 
+transfer_execute 
+ 
+
+
+--- page 8 ---
+9. 缺真正「狀態機」 
+這點很重要。 
+例如： 
+Shipment： 
+應該： 
+DRAFT 
+→ CONFIRMED 
+→ POSTED 
+→ CANCELLED 
+ 
+而不是： 
+任意修改 status 
+ 
+否則： 
+很容易出現： 
+已 POSTED 又被改回 DRAFT 
+ 
+10. 負庫存規則可能還不一致 
+你文件裡有提： 
+禁止負庫存 
+但真正難的是： 
+哪些情況允許？ 
+例如： 
+●​ 草稿？ 
+●​ 預留？ 
+●​ 回沖？ 
+●​ 補帳？ 
+●​ 移轉途中？ 
+ 
+
+
+--- page 9 ---
+這一定要： 
+全系統統一規則 
+ 
+C. 可以後面再優化 
+ 
+11. 搜尋能力 
+之後 lot 多後： 
+一定需要： 
+●​ lot search 
+●​ fuzzy search 
+●​ batch trace 
+ 
+12. Dashboard 
+現在可能： 
+只是 CRUD。 
+但 ERP 後面： 
+會需要： 
+●​ 庫存預警 
+●​ 即期品 
+●​ 異常 movement 
+●​ 呆滯庫存 
+ 
+13. 檔案管理 
+GMP 後面： 
+一定會： 
+●​ COA 
+
+
+--- page 10 ---
+●​ 檢驗報告 
+●​ import docs 
+●​ SOP 
+ 
+Google Drive 關聯會越來越重要。 
+ 
+14. migration 能力 
+這非常容易被忽略。 
+你現在： 
+已經越來越不像「小工具」。 
+ 
+未來： 
+很可能： 
+要從 Sheet 搬去真正 DB 
+例如： 
+●​ PostgreSQL 
+●​ Supabase 
+●​ MySQL 
+ 
+如果現在： 
+●​ ID 不穩 
+●​ 關聯亂 
+●​ schema 不固定 
+之後 migration 會非常痛。 
+ 
+最後我幫你總結 
+ 
+
+
+--- page 11 ---
+真正最優先 
+Tier 1（現在） 
+1.​ Snapshot 
+2.​ movement 標準化 
+3.​ transaction consistency 
+4.​ unit 統一 
+5.​ state machine 
+ 
+Tier 2（近期） 
+6.​ reservation 
+7.​ audit 
+8.​ role permission 
+9.​ lot genealogy 
+ 
+Tier 3（之後） 
+10.​allocation 
+11.​dashboard 
+12.​file system 
+13.​migration-ready architecture 
+ 

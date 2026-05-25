@@ -96,9 +96,65 @@ async function lotsRenderGuarded_(){
   await renderLots();
 }
 
+function syncLotsRebuildBalanceVisibility_(){
+  const btn = document.getElementById("lotsRebuildBalanceBtn");
+  if(!btn) return;
+  const role = typeof getCurrentUserRole === "function"
+    ? String(getCurrentUserRole() || "").trim().toUpperCase()
+    : "";
+  const show = role === "ADMIN";
+  btn.style.display = show ? "" : "none";
+  btn.setAttribute("aria-hidden", show ? "false" : "true");
+}
+
+async function lotsRebuildBalanceClick(){
+  if(
+    typeof getCurrentUserRole !== "function" ||
+    String(getCurrentUserRole() || "").trim().toUpperCase() !== "ADMIN"
+  ){
+    if(typeof showToast === "function") showToast("僅 ADMIN 可重建庫存快照。", "error");
+    return;
+  }
+  const ok = typeof erpConfirmActionKey_ === "function"
+    ? erpConfirmActionKey_("confirm.action.generic", {
+      fallback: "將依 inventory_movement 全表重算 lot_balance 快照（查詢加速用）。\n日常有異動會自動更新；僅在懷疑快照不一致時才需要。\n\n確定要重建嗎？"
+    })
+    : window.confirm("將重算 lot_balance 快照。確定要重建嗎？");
+  if(!ok) return;
+
+  const btn = document.getElementById("lotsRebuildBalanceBtn");
+  if(btn) btn.disabled = true;
+  if(typeof showSaveHint === "function") showSaveHint();
+  try{
+    const actor = typeof getCurrentUser === "function" ? String(getCurrentUser() || "").trim() : "";
+    const r = await callAPI({
+      action: "dev_rebuild_lot_balance",
+      created_by: actor,
+      updated_by: actor
+    }, { method: "POST" });
+    if(!r || !r.success){
+      const msg = (r && r.errors && r.errors.length) ? r.errors.join("; ") : "重建失敗";
+      if(typeof showToast === "function") showToast(msg, "error");
+      return;
+    }
+    const n = Number(r.rebuilt || 0);
+    if(typeof showToast === "function"){
+      showToast("庫存快照已重建（" + n + " 筆 lot）", "success");
+    }
+    await loadLotsAndMovements();
+    await lotsRenderGuarded_();
+  }catch(e){
+    if(typeof showToast === "function") showToast(String(e && e.message ? e.message : e), "error");
+  }finally{
+    if(btn) btn.disabled = false;
+    if(typeof hideSaveHint === "function") hideSaveHint();
+  }
+}
+
 async function lotsInit(){
   setLotsHeaderHint_("批次狀態：載入中…", "warn");
   setLotsQaHint_("QA概況：載入中…", "warn");
+  syncLotsRebuildBalanceVisibility_();
   await loadLotsAndMovements();
   bindAutoSearchToolbar_([
     ["search_lots_keyword", "input"],
@@ -227,14 +283,10 @@ async function loadLotsAndMovements(){
 
 function getLotsAvailableByLotId(lotId){
   const id = String(lotId || "");
-  if(!id) return 0;
+  if(!id) return null;
   const hit = lotsAvailableByLotId_?.[id];
-  if(hit != null) return Number(hit || 0);
-  // 彙總成功時：缺 map entry 視為 0（避免「缺資料」被誤判為有庫存）
-  if(!movementLoadFailed) return 0;
-  // 彙總失敗時：才用 lot.qty 作為估算顯示
-  const lot = (lotsCache || []).find(l => String(l.lot_id || "") === id) || null;
-  return Number(lot?.qty || 0);
+  if(hit !== undefined) return hit;
+  return null;
 }
 
 function lotsWarehouseLabelById_(warehouseId){
@@ -259,6 +311,7 @@ function getLotInventoryStatusDerived_(lot){
   // 若批次已被明確標記為 VOID（例如作廢回收的產出批次），一律視為不可用
   if(String(lot.inventory_status || "").toUpperCase() === "VOID") return "VOID";
   const av = getLotsAvailableByLotId(lot.lot_id);
+  if(av === null || av === undefined) return String(lot.inventory_status || "ACTIVE").toUpperCase();
   if(isLotExpiredClient_(lot.expiry_date)) return "VOID";
   if(Number(av || 0) <= 1e-9) return "CLOSED";
   return "ACTIVE";

@@ -45,7 +45,8 @@ function invNormalizeId_(s){
 }
 
 /**
- * 計算某 lot 的可用量：movement.qty 加總；若該 lot 沒任何 movement，fallback 使用 lot.qty
+ * 計算某 lot 的可用量：movement.qty 加總
+ * - 若該 lot 沒任何 movement：回傳 null（代表「缺 movement」；避免 lot fallback 變成第二真相來源）
  * @param {string} lotId
  * @param {Array<object>} lots
  * @param {Array<object>} movements
@@ -55,14 +56,13 @@ function invAvailableByLotId_(lotId, lots, movements){
   if(!lid) return 0;
   const rows = (movements || []).filter(m => invNormalizeId_(m.lot_id) === lid);
   if(!rows.length){
-    const lot = (lots || []).find(l => invNormalizeId_(l.lot_id) === lid);
-    return Number(lot?.qty || 0);
+    return null;
   }
   return rows.reduce((sum, m) => sum + Number(m.qty || 0), 0);
 }
 
 /**
- * 建立 lot_id -> available 的 map（只依 movements 加總；無 movements 的 lot 會以 lot.qty）
+ * 建立 lot_id -> available 的 map（只依 movements 加總；無 movements 的 lot 會是 null）
  */
 function invBuildAvailableMap_(lots, movements){
   const map = {};
@@ -72,5 +72,15 @@ function invBuildAvailableMap_(lots, movements){
     map[id] = invAvailableByLotId_(id, lots, movements);
   });
   return map;
+}
+
+function invIsMissingMovement_(available){
+  return available === null || available === undefined || (typeof available === "number" && isNaN(available));
+}
+
+function invFormatAvailableText_(available){
+  if(invIsMissingMovement_(available)) return "--";
+  const n = Number(available || 0);
+  return String(isFinite(n) ? n : "--");
 }
 

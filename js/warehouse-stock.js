@@ -51,15 +51,10 @@ function wsExpiryInfo_(expiryDateStr){
 
 function wsAvailableByLotId_(lotId){
   const id = String(lotId || "");
-  if(!id) return 0;
+  if(!id) return null;
   const hit = wsAvailableByLotIdMap_?.[id];
-  if(hit != null) return Number(hit || 0);
-  // 只有在 movements 讀取失敗時，才退回用 lot.qty（避免 map 暫時缺值/快取舊值造成顯示錯帳）
-  if(wsMovementLoadFailed){
-    const lot = (wsLots || []).find(l => String(l.lot_id || "") === id) || null;
-    return Number(lot?.qty || 0);
-  }
-  return 0;
+  if(hit !== undefined) return hit;
+  return null;
 }
 
 function wsProductDisplay_(productId){

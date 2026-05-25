@@ -182,7 +182,10 @@ function loadModule(path, moduleName = null) {
     window.__ERP_ACTIVE_MODULE_SEQ__ = seq;
   }catch(_e){}
 
-  fetch(path)
+  // 模組 HTML 不掛 ?v= 時容易被瀏覽器/Pages 快取住，導致「程式已更新但畫面沒變」
+  // 這裡用時間戳做 cache bust，避免使用者需要手動清快取才能看到更新
+  const url = path + (String(path || "").indexOf("?") === -1 ? "?" : "&") + "_ts=" + String(Date.now());
+  fetch(url)
     .then(response => {
       if (!response.ok) {
         const e = new Error("HTTP " + response.status);

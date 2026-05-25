@@ -90,7 +90,8 @@ async function loadMergeCaches(){
       `<option value="">請選擇</option>` +
       lots.map(l => {
         const av = mergeGetAvailable(l.lot_id);
-        return `<option value="${l.lot_id}" data-product="${l.product_id}" data-unit="${l.unit}" data-type="${l.type}" data-qa="${l.status}" data-av="${av}">${l.lot_id} 可用:${av}</option>`;
+        const avText = (typeof invFormatAvailableText_ === "function") ? invFormatAvailableText_(av) : String(av ?? "--");
+        return `<option value="${l.lot_id}" data-product="${l.product_id}" data-unit="${l.unit}" data-type="${l.type}" data-qa="${l.status}" data-av="${av}">${l.lot_id} 可用:${avText}</option>`;
       }).join("");
   }
   mergeLoadInFlight_ = false;
@@ -109,14 +110,10 @@ function formatMergeProductDisplay_(productId){
 
 function mergeGetAvailable(lotId){
   const id = String(lotId || "");
-  if (!id) return 0;
+  if (!id) return null;
   const hit = mergeAvailByLotId_[id];
-  if (hit != null) return Number(hit || 0);
-  if (mergeMovementLoadFailed_) {
-    const lot = (mergeLots || []).find(l => String(l.lot_id || "") === id);
-    return Number(lot?.qty || 0);
-  }
-  return 0;
+  if (hit !== undefined) return hit;
+  return null;
 }
 
 function resetMerge(){
@@ -160,6 +157,9 @@ function addMergeDraft(){
   const lot = mergeLots.find(l => l.lot_id === lotId);
   if(!lot) return showToast("找不到 Lot","error");
   const av = mergeGetAvailable(lotId);
+  if(typeof invIsMissingMovement_ === "function" && invIsMissingMovement_(av)){
+    return showToast("此 Lot 缺 movement（請先補齊入庫/異動紀錄）", "error");
+  }
   if(qty > av) return showToast("取用不可超過可用量","error");
 
   // 強制同產品同單位
@@ -286,84 +286,19 @@ async function postMerge(triggerEl){
   const firstSrcLot = (mergeLots || []).find(l => l.lot_id === (mergeDraft?.[0]?.lot_id || "")) || null;
   const whId = String(firstSrcLot?.warehouse_id || "MAIN").trim().toUpperCase() || "MAIN";
 
-  // create new lot (QA status default: APPROVED only if all sources approved; currently sources are APPROVED)
-  await createRecord("lot", {
-    lot_id: newLotId,
-    product_id: mergePickedProduct,
-    warehouse_id: whId,
-    source_type: "MERGE",
-    source_id: refId,
-    qty: String(total),
-    unit: mergePickedUnit,
-    type: mergePickedType || "WIP",
-    status: mergePickedQA || "APPROVED",
-    inventory_status: "ACTIVE",
-    received_date: nowIso16(),
-    manufacture_date: "",
-    expiry_date: "",
-    created_by: getCurrentUser(),
-    created_at: nowIso16(),
-    updated_by: "",
-    updated_at: "",
-    remark: remark || "",
-    system_remark: `Merge lots -> ${refId}`
-  });
-
-  // IN to new
-  await createRecord("inventory_movement", {
-    movement_id: generateId("MV"),
-    movement_type: "IN",
-    lot_id: newLotId,
-    product_id: mergePickedProduct,
-    warehouse_id: whId,
-    qty: String(Math.abs(total)),
-    unit: mergePickedUnit,
-    ref_type: "MERGE",
+  // Phase 1（交易一致性）：合批改走後端 bundle，一次完成 lot/movement/relation，避免分段寫入造成不同步
+  await callAPI({
+    action: "post_merge_bundle",
+    new_lot_id: newLotId,
     ref_id: refId,
-    remark: "",
-    created_by: getCurrentUser(),
-    created_at: nowIso16(),
-    updated_by: "",
-    updated_at: "",
-    system_remark: `Merge IN: ${refId}`,
-  });
-
-  // OUT from sources + relations
-  for(let idx=0; idx<mergeDraft.length; idx++){
-    const it = mergeDraft[idx];
-    const srcLot = (mergeLots || []).find(l => l.lot_id === it.lot_id) || null;
-
-    await createRecord("inventory_movement", {
-      movement_id: generateId("MV"),
-      movement_type: "OUT",
+    remark: remark || "",
+    // 後端會再驗證可用量與一致性（產品/單位/倉別），前端只送最小資料
+    lines_json: JSON.stringify((mergeDraft || []).map((it) => ({
       lot_id: it.lot_id,
-      product_id: it.product_id,
-      warehouse_id: String(srcLot?.warehouse_id || "MAIN").trim().toUpperCase() || "MAIN",
-      qty: String(-Math.abs(it.qty)),
-      unit: it.unit,
-      ref_type: "MERGE",
-      ref_id: refId,
-      remark: "",
-      created_by: getCurrentUser(),
-      created_at: nowIso16(),
-      updated_by: "",
-      updated_at: "",
-      system_remark: `Merge OUT: ${refId}`,
-    });
-
-    await createRecord("lot_relation", {
-      relation_id: `REL-${refId}-${String(idx+1).padStart(3,"0")}`,
-      relation_type: "MERGE",
-      from_lot_id: it.lot_id,
-      to_lot_id: newLotId,
-      qty: String(it.qty),
-      unit: it.unit,
-      ref_type: "MERGE",
-      ref_id: refId,
-      created_by: getCurrentUser(),
-      created_at: nowIso16()
-    });
-  }
+      qty: String(it.qty)
+    }))),
+    idempotency_key: `MERGE:${newLotId}:${refId}`
+  }, { method: "POST" });
 
   showToast("合批完成");
   await loadMergeCaches();
@@ -378,6 +313,16 @@ async function postMerge(triggerEl){
 // =====================
 // Merge Module (Multi-Source Manufacturing)
 // =====================
+
+// UX：使用者手動修改新 Lot ID 時，即時更新按鈕狀態（避免填了仍顯示 disabled）
+try{
+  document.addEventListener("input", function(e){
+    const id = e && e.target ? String(e.target.id || "") : "";
+    if(id === "merge_new_lot_id"){
+      try{ setMergeButtons_(); }catch(_e){}
+    }
+  });
+}catch(_eBind){}
 
 function mergeInitLegacy_() {
     populateMergeLots();

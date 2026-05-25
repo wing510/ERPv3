@@ -40,7 +40,10 @@
       </button>
     </div>
     <p id="db_movement_note" style="display:none;margin:12px 0 0 0;font-size:13px;color:#b45309;background:#fffbeb;padding:8px 12px;border-radius:6px;border:1px solid #fcd34d;">
-      無法讀取庫存異動時，可用量改以 Lot 主檔推算，數字可能與 Lots 列表略有差異。
+      無法讀取庫存異動彙總（available map）。目前可用量將顯示為「—/--」，請稍後重試或確認後端是否可連線。
+    </p>
+    <p id="db_missing_movement_note" style="display:none;margin:10px 0 0 0;font-size:13px;color:#991b1b;background:#fef2f2;padding:8px 12px;border-radius:6px;border:1px solid #fecaca;">
+      偵測到有 Lot 缺少 movement（庫存流水帳）紀錄：<strong id="db_missing_movement_count">—</strong> 筆。這些 Lot 的可用量會顯示為「--」，且出貨/扣庫會被阻擋。
     </p>
   </div>
 </div>

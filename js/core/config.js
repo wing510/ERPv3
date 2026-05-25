@@ -11,9 +11,9 @@
     API_BASE_PROD:
       "https://script.google.com/macros/s/AKfycbzSyD32l9WJDUDHqdCVXz8xsihb2c9ec-CdHlh37RGuper0wWfQV5xTYtxDoJ2y0adj/exec",
     API_BASE_DEV:
-      "https://script.google.com/macros/s/AKfycbw3xcazbu_aTBcGqqu60yhf-Qu26CyKa5AJFdJVHvrO_SyGV9z1VthoLI97cvYJmRdl/exec", // prev: https://script.google.com/macros/s/AKfycby6r1NFamww829oPiBk3iMkB4CqA7ZAHUGRX9NvsAvBmPAK44O1R4t0TvGFkUFaNBrh/exec
+      "https://script.google.com/macros/s/AKfycbytLafLy8PRVmGx3IVRCQ7j1WKj2Go4eRSevTCECDYR4IgukvLkDMQS5rZ61ex9HUTa/exec", // prev: https://script.google.com/macros/s/AKfycbzq1rWJ9Lx9agg3I6jprEpWk83TFUSc60ihWeuDIqVoBRLr7P4Sv-r1RmpEesHAU3gY/exec
     // 相容舊版：若你仍想手動指定單一 API_BASE，可在 window.__ERP_CONFIG__ 直接覆寫 API_BASE
-    API_BASE: "", // prev: https://script.google.com/macros/s/AKfycbx2U7cE8IWz2ik0GVHc8gHdaXcWjDzk1B-Cd4AY7fzqzX5BUbcMyQ_LRDn-kM_jq8a1/exec
+    API_BASE: "", // prev: https://script.google.com/macros/s/AKfycbzSdWP40h38ps95laROnFNbaBm79a0o54Q6fOcWy6YRpUeaRGV1-RDOMwNFzXuR1UEb/exec
     // 可選：保護 dev_* 動作（後端 Script Properties 的 DEV_GUARD_TOKEN）
     // - 只建議放在 DEV 前端（或本機），正式版不要設定
     DEV_GUARD_TOKEN: "",

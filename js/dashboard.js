@@ -48,28 +48,7 @@ function dbDaysFromTodayToExpiryEnd_(expiryDateStr) {
   return Math.ceil((end.getTime() - startOfToday.getTime()) / 86400000);
 }
 
-/** 與 Lots 相同：依異動加總；該 Lot 無異動列時用入庫 qty */
-function buildLotAvailabilityMap_(lots, movements) {
-  const movByLot = {};
-  (movements || []).forEach(function (m) {
-    if (!m || !m.lot_id) return;
-    if (!movByLot[m.lot_id]) movByLot[m.lot_id] = [];
-    movByLot[m.lot_id].push(m);
-  });
-  const map = {};
-  (lots || []).forEach(function (l) {
-    if (!l || !l.lot_id) return;
-    const rows = movByLot[l.lot_id] || [];
-    if (rows.length === 0) {
-      map[l.lot_id] = Number(l.qty || 0);
-    } else {
-      map[l.lot_id] = rows.reduce(function (s, x) {
-        return s + Number(x.qty || 0);
-      }, 0);
-    }
-  });
-  return map;
-}
+// 注意：Dashboard 不再做 lot.qty fallback（避免雙來源）；可用量以 movement 彙總為準
 
 function setText(id, text) {
   const el = document.getElementById(id);
@@ -78,16 +57,18 @@ function setText(id, text) {
 
 function dbGetAvail_(lot, availMap, movementLoadFailed){
   const id = lot && lot.lot_id ? String(lot.lot_id) : "";
-  if(!id) return 0;
-  const hit = availMap ? availMap[id] : null;
-  if(hit != null) return Number(hit || 0);
-  // 異動讀取失敗時才 fallback（避免把「缺資料」誤當成有庫存）
-  return movementLoadFailed ? Number(lot.qty || 0) : 0;
+  if(!id) return null;
+  if(movementLoadFailed) return null;
+  const hit = availMap ? availMap[id] : undefined;
+  // 後端 map 只有「有 movement 的 lot」才會有鍵；缺 movement 視為 null（顯示 --）
+  if(hit === undefined) return null;
+  return Number(hit || 0);
 }
 
 function dbDerivedInventoryStatus_(lot, availableQty, movementLoadFailed) {
   if (movementLoadFailed) return String(lot.inventory_status || "ACTIVE").toUpperCase();
   if (dbIsExpired_(lot.expiry_date)) return "VOID";
+  if (availableQty == null) return String(lot.inventory_status || "ACTIVE").toUpperCase();
   if (Number(availableQty || 0) <= 1e-9) return "CLOSED";
   return "ACTIVE";
 }
@@ -171,21 +152,21 @@ function renderDashboard(ctx) {
     const isExpired = dbIsExpired_(exp);
     if (isExpired) {
       // 已過期批次：只計入「仍有庫存」才符合待辦/風險語意（否則歷史資料會長期佔住指標）
-      if (av > 0) expired += 1;
+      if (av != null && av > 0) expired += 1;
       return;
     }
 
     // 效期 30 天內：只計入「仍可用且有庫存」的批次，才符合「建議優先出貨」的語意
     // - inv === ACTIVE：未過期、可用量 > 0
     // - av > 0：避免無庫存批次佔住指標
-    if (inv === "ACTIVE" && av > 0) {
+    if (inv === "ACTIVE" && av != null && av > 0) {
       const days = dbDaysFromTodayToExpiryEnd_(exp);
       if (days != null && days >= 0 && days <= 30) expiring30 += 1;
     }
 
     // 待 QA：只計入仍可用的批次，避免「無庫存/作廢」長期佔住指標
-    if (qa === "PENDING" && inv === "ACTIVE" && av > 0) pendingQa += 1;
-    if (qa === "APPROVED" && inv === "ACTIVE" && av > 0) shippable += 1;
+    if (qa === "PENDING" && inv === "ACTIVE" && av != null && av > 0) pendingQa += 1;
+    if (qa === "APPROVED" && inv === "ACTIVE" && av != null && av > 0) shippable += 1;
   });
 
   setText("db_pending_qa", String(pendingQa));
@@ -195,6 +176,21 @@ function renderDashboard(ctx) {
 
   const noteEl = document.getElementById("db_movement_note");
   if (noteEl) noteEl.style.display = movementLoadFailed ? "block" : "none";
+
+  // 缺 movement 的 lot（map 沒有該 lot_id key）
+  let missingMovement = 0;
+  if(!movementLoadFailed){
+    for(const l of (lots || [])){
+      const id = l && l.lot_id ? String(l.lot_id) : "";
+      if(!id) continue;
+      if(availMap && Object.prototype.hasOwnProperty.call(availMap, id)) continue;
+      missingMovement += 1;
+    }
+  }
+  const missEl = document.getElementById("db_missing_movement_note");
+  const missCnt = document.getElementById("db_missing_movement_count");
+  if(missCnt) missCnt.textContent = movementLoadFailed ? "—" : String(missingMovement);
+  if(missEl) missEl.style.display = (!movementLoadFailed && missingMovement > 0) ? "block" : "none";
 
   const pos = ctx.purchaseOrders || [];
   let poOpen = 0;

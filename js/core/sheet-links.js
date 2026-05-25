@@ -106,6 +106,13 @@ async function getEnvInfoFromBackend_(){
   if(ERP_SPREADSHEET_ID_CACHE_ && ERP_SHEET_GIDS_CACHE_) return { spreadsheet_id: ERP_SPREADSHEET_ID_CACHE_, sheet_gids: ERP_SHEET_GIDS_CACHE_ };
   if(typeof callAPI !== "function") return null;
 
+  // env_info 僅供維運/管理用途；未登入或非 CEO/GA/ADMIN 時不要去打後端，避免噴 auth/session 錯誤干擾主流程
+  try{
+    if(typeof erpCanOpenSheet_ === "function" && !erpCanOpenSheet_()){
+      return null;
+    }
+  }catch(_eRole){}
+
   if(!ERP_ENV_INFO_PROMISE_){
     ERP_ENV_INFO_PROMISE_ = (async function(){
       try{

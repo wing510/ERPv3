@@ -167,35 +167,59 @@ function updatePOFlowHint_(){
   const el = document.getElementById("poFlowHint");
   if(!el) return;
   if(poEditing && poReadOnly){
-    el.textContent = "採購：已載入 · 已有收貨 · 主檔／明細備註可改";
+    el.textContent =
+      (typeof window.erpFlowHintText_ === "function")
+        ? window.erpFlowHintText_("採購", "已載入 · 已有收貨", "主檔／明細備註可改")
+        : "採購：已載入 · 已有收貨 · 主檔／明細備註可改";
     return;
   }
   if(poEditing && poIsTerminalStatus_()){
     const zh = poDocStatusZh_(poLoadedStatus_) || poNormPoStatus_(poLoadedStatus_);
-    el.textContent = "採購：已載入 · " + zh + " · 僅備註可改";
+    el.textContent =
+      (typeof window.erpFlowHintText_ === "function")
+        ? window.erpFlowHintText_("採購", "已載入 · " + zh, "僅備註可改")
+        : ("採購：已載入 · " + zh + " · 僅備註可改");
     return;
   }
   if(poEditing && poAllowFullHeaderOps_()){
     if(poHeaderEditMode_ && poItemsEditMode_){
-      el.textContent = "採購：已載入 · 編輯中 · 請「儲存主檔／儲存明細」或「取消編輯」";
+      el.textContent =
+        (typeof window.erpFlowHintText_ === "function")
+          ? window.erpFlowHintText_("採購", "已載入 · 編輯中", "請「儲存主檔／儲存明細」或「取消編輯」")
+          : "採購：已載入 · 編輯中 · 請「儲存主檔／儲存明細」或「取消編輯」";
       return;
     }
     if(poHeaderEditMode_){
-      el.textContent = "採購：已載入 · 主檔編輯中 · 請儲存或取消";
+      el.textContent =
+        (typeof window.erpFlowHintText_ === "function")
+          ? window.erpFlowHintText_("採購", "已載入 · 主檔編輯中", "請儲存或取消")
+          : "採購：已載入 · 主檔編輯中 · 請儲存或取消";
       return;
     }
     if(poItemsEditMode_){
-      el.textContent = "採購：已載入 · 明細編輯中 · 請儲存或取消";
+      el.textContent =
+        (typeof window.erpFlowHintText_ === "function")
+          ? window.erpFlowHintText_("採購", "已載入 · 明細編輯中", "請儲存或取消")
+          : "採購：已載入 · 明細編輯中 · 請儲存或取消";
       return;
     }
-    el.textContent = "採購：已載入 · 未收貨 · 請先「編輯主檔／編輯明細」再儲存";
+    el.textContent =
+      (typeof window.erpFlowHintText_ === "function")
+        ? window.erpFlowHintText_("採購", "已載入 · 未收貨", "請先「編輯主檔／編輯明細」再儲存")
+        : "採購：已載入 · 未收貨 · 請先「編輯主檔／編輯明細」再儲存";
     return;
   }
   if(poEditing){
-    el.textContent = "採購：已載入 · 狀態依收貨自動維護（OPEN／PARTIAL／CLOSED）";
+    el.textContent =
+      (typeof window.erpFlowHintText_ === "function")
+        ? window.erpFlowHintText_("採購", "已載入", "狀態依收貨自動維護（OPEN／PARTIAL／CLOSED）")
+        : "採購：已載入 · 狀態依收貨自動維護（OPEN／PARTIAL／CLOSED）";
     return;
   }
-  el.textContent = "採購：新單 · 填主檔與明細後按「建立」開單";
+  el.textContent =
+    (typeof window.erpFlowHintText_ === "function")
+      ? window.erpFlowHintText_("採購", "新單", "填主檔與明細後按「建立」開單")
+      : "採購：新單 · 填主檔與明細後按「建立」開單";
 }
 
 /**
@@ -740,11 +764,15 @@ function selectPOItemDbRow_(poItemId){
   if(qtyEl) qtyEl.value = String(it.order_qty ?? "");
   const rmEl = document.getElementById("po_item_remark");
   if(rmEl) rmEl.value = String(it.remark || "");
-  showToast(
-    poItemsEditMode_
-      ? "已帶入明細（可修改後調整列表，或「儲存明細」寫回）"
-      : "已帶入明細（僅改備註請按「儲存備註」；改數量請先「編輯明細」）"
-  );
+  if(poItemsEditMode_){
+    showToast("已帶入明細（可修改後調整列表，或「儲存明細」寫回）");
+  }else{
+    const hint =
+      (typeof window.erpHintPickedLineText_ === "function")
+        ? window.erpHintPickedLineText_({ canEditStructure: true, needsEditItemsFirst: true })
+        : "已帶入明細（僅改備註請按「儲存備註」；改數量請先「編輯明細」）";
+    showToast(hint);
+  }
 }
 
 async function updateSelectedPOItemRemark(triggerEl){

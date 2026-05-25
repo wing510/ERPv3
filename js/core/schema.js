@@ -284,6 +284,16 @@ const SCHEMA = {
     "system_remark"
   ],
 
+  // 庫存快照（查詢加速；真相仍為 inventory_movement）
+  lot_balance: [
+    "lot_id",
+    "available_qty",
+    "movement_count",
+    "last_movement_id",
+    "updated_at",
+    "updated_by"
+  ],
+
   /*********************************
    * Goods Receipt（採購收貨）
    * PO → 收貨（可分批）→ 每次收貨產生 Lot（PENDING）→ movements(IN)

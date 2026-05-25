@@ -889,13 +889,19 @@ function rcvSumMovementQtyForLot_(movements, lotId) {
     .reduce((sum, m) => sum + Number(m.qty || 0), 0);
 }
 
-/** 優先用後端彙總 map；缺值或彙總失敗則退回 movements 加總 */
+/**
+ * 優先用後端彙總 map；無 key = 缺 movement（null）
+ * 彙總失敗則退回 movements 加總；完全無列亦為 null
+ */
 function rcvNetQtyForLot_(movements, lotId, availMap, availOk) {
   const id = String(lotId || "");
-  if (!id) return 0;
-  if (availOk && availMap && availMap[id] != null) {
+  if (!id) return null;
+  if (availOk && availMap) {
+    if (!Object.prototype.hasOwnProperty.call(availMap, id)) return null;
     return Number(availMap[id] || 0);
   }
+  const rows = (movements || []).filter((m) => m.lot_id === id);
+  if (!rows.length) return null;
   return rcvSumMovementQtyForLot_(movements, id);
 }
 
@@ -952,6 +958,7 @@ function rcvVoidEligibilityForGr_(gr_id, grRow, po_id_expected, griAll, movement
     if (!inMv) return { ok: false, reason: `批號 ${lotId}：找不到對應入庫異動，無法作廢` };
     const inQty = Math.abs(Number(inMv.qty || 0));
     const net = rcvNetQtyForLot_(movements, lotId, availMap, availOk);
+    if (net === null) return { ok: false, reason: `批號 ${lotId}：缺 inventory movement，無法作廢` };
     if (net + 1e-9 < inQty) return { ok: false, reason: `可用量不足（批號 ${lotId}）` };
   }
   return { ok: true, reason: "" };
@@ -985,6 +992,7 @@ function rcvVoidEligibilityForIr_(import_receipt_id, irRow, doc_id_expected, iri
     if (!inMv) return { ok: false, reason: `批號 ${lotId}：找不到對應入庫異動，無法作廢` };
     const inQty = Math.abs(Number(inMv.qty || 0));
     const net = rcvNetQtyForLot_(movements, lotId, availMap, availOk);
+    if (net === null) return { ok: false, reason: `批號 ${lotId}：缺 inventory movement，無法作廢` };
     if (net + 1e-9 < inQty) return { ok: false, reason: `可用量不足（批號 ${lotId}）` };
   }
   return { ok: true, reason: "" };

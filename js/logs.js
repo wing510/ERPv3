@@ -35,7 +35,7 @@ const LOG_TAB_TABLES = {
     "import_document","import_item","import_receipt","import_receipt_item",
     "goods_receipt","goods_receipt_item"
   ],
-  inventory: ["lot","inventory_movement","lot_relation"],
+  inventory: ["lot","inventory_movement","lot_relation","lot_balance"],
   process: ["process_order","process_order_input","process_order_output"],
   sales: ["sales_order","sales_order_item"],
   shipment: ["shipment","shipment_item"]
@@ -65,8 +65,16 @@ const LOG_TABLE_LABELS = {
   sales_order_item: "sales_order_item（銷售明細）",
   shipment: "shipment（出貨單）",
   shipment_item: "shipment_item（出貨明細）",
+  lot_balance: "lot_balance（庫存快照）",
   logs: "logs（操作紀錄）"
 };
+
+function logsDaysFromRange_(rangeVal) {
+  const r = String(rangeVal || "7");
+  if (r === "all") return 3650;
+  const n = Number(r);
+  return isNaN(n) ? 90 : n;
+}
 
 function getLogTableLabel_(tableName){
   const t = String(tableName || "").trim();
@@ -204,7 +212,13 @@ async function logsInit(){
    "logs_filter_range"].forEach(id=>{
      const el = document.getElementById(id);
      if(!el) return;
-     el.addEventListener(id.includes("keyword") ? "input" : "change", applyLogsFilter);
+     el.addEventListener(id.includes("keyword") ? "input" : "change", function(){
+       if(id === "logs_filter_range"){
+         loadLogs().then(function(){ applyLogsFilter(); initLogsTableOptions_(); });
+       }else{
+         applyLogsFilter();
+       }
+     });
    });
 
   updateLogsTabUI();
@@ -221,8 +235,39 @@ async function loadLogs(){
   logsLoadInFlight_ = true;
   setTbodyLoading_("logsTableBody", 7);
   try{
-    const list = await getAll("logs");
-    logsCache = Array.isArray(list) ? list : [];
+    const pending = window.__pendingOpenLogs;
+    const rangeEl = document.getElementById("logs_filter_range");
+    const days = logsDaysFromRange_(pending ? "all" : (rangeEl && rangeEl.value));
+    let rows = null;
+
+    if(pending && pending.referenceId){
+      try{
+        const r = await callAPI({
+          action: "list_logs_by_ref",
+          table_name: String(pending.tableName || ""),
+          reference_id: String(pending.referenceId || ""),
+          days: days,
+          _ts: String(Date.now())
+        }, { method: "POST" });
+        rows = typeof erpParseArrayDataResponse_ === "function" ? erpParseArrayDataResponse_(r) : [];
+      }catch(_eRef){ rows = null; }
+    }
+
+    if(!Array.isArray(rows)){
+      try{
+        const r = await callAPI({
+          action: "list_logs_recent",
+          days: days,
+          limit: "2000",
+          _ts: String(Date.now())
+        }, { method: "POST" });
+        rows = typeof erpParseArrayDataResponse_ === "function" ? erpParseArrayDataResponse_(r) : [];
+      }catch(_eRecent){
+        rows = await getAll("logs").catch(() => []);
+      }
+    }
+
+    logsCache = Array.isArray(rows) ? rows : [];
 
     logsCache.sort((a,b)=>{
       const ta = parseLogDate(a.created_at)?.getTime() || 0;
@@ -263,7 +308,11 @@ function applyLogsFilter(){
       if(!allowTables.includes(l.table_name)) return false;
     }
 
-    if(action && l.action_type !== action) return false;
+    if(action){
+      if(action === "BUNDLE"){
+        if(!String(l.action_type || "").startsWith("BUNDLE_")) return false;
+      }else if(l.action_type !== action) return false;
+    }
     if(table && l.table_name !== table) return false;
 
     if(rangeMs != null){
@@ -303,12 +352,13 @@ function renderLogs(list){
     const encoded = encodeURIComponent(JSON.stringify(l));
 
     const tr = document.createElement("tr");
+    const act = String(l.action_type || "");
     tr.innerHTML = `
       <td>${l.log_id || ""}</td>
       <td>${escapeHtml(getLogTableLabel_(l.table_name))}</td>
-      <td>${l.reference_id || ""}</td>
-      <td>${l.action_type || ""}</td>
-      <td>${l.created_by || ""}</td>
+      <td>${escapeHtml(l.reference_id || "")}</td>
+      <td title="${escapeHtml(act)}">${escapeHtml(act)}</td>
+      <td>${escapeHtml(l.created_by || "")}</td>
       <td>${formatLocalTime(l.created_at)}</td>
       <td>
         <span class="logs-view-link"

@@ -3,6 +3,27 @@
  * Clean Stable Edition + Logs
  *********************************/
 
+/* =================================================
+   目錄（快速找段落用）
+   - 提示：在 Apps Script 編輯器或本檔用 Ctrl+F 搜尋「#SEC:」即可跳段
+   - 原則：本檔維持單一檔案貼上部署；僅做章節化標記，不改任何邏輯
+
+   #SEC:BOOTSTRAP       環境/Properties、Sheet/GID、共用常數
+   #SEC:SCHEMAS         SHEET_SCHEMAS（缺表自動建立 + 標題驗證）
+   #SEC:LOGS            Logs 設定 / 寫入工具
+   #SEC:ROUTES          doGet/doPost、ROUTES、權限/ENV gate
+   #SEC:GENERIC         Generic engine（create/update/delete/list + blocklist）
+   #SEC:MASTER          主檔（product/supplier/customer/warehouse/user...）
+   #SEC:WAREHOUSE       倉庫查詢/報表
+   #SEC:INVENTORY       Lot / Lot Relation / Inventory Movement / 合批拆批轉倉 / 扣庫回沖
+   #SEC:RECEIVE         收貨（採購/進口）bundle/command
+   #SEC:SHIPMENT        出貨 bundle/command
+   #SEC:TRACE           Trace bundle/查詢
+   #SEC:AUTH            Session / Login / Google Login / 權限
+   #SEC:DEV             dev_* 工具（僅 DEV）
+================================================= */
+
+// #SEC:BOOTSTRAP
 // 方案 B：DEV/PROD 用「不同部署網址」+「同一份程式碼」
 // - 做法：同一個 Apps Script 專案，用同一份程式碼「部署兩次」（DEV / PROD 各一個 deployment URL）
 // - Script Properties（每個部署各自設定一套）：
@@ -69,6 +90,7 @@ const LOG_HEADERS = [
   "created_at"
 ];
 
+// #SEC:SCHEMAS
 /* =================================================
    SHEET SCHEMAS（缺表自動建立 + 標題驗證）
    ※ 修改欄位後：試算表第 1 列須與此處完全一致，並將本檔部署至 Apps Script。
@@ -111,6 +133,10 @@ const SHEET_SCHEMAS = {
   ]),
   inventory_movement: SCHEMA_FIELDS_([
     "movement_id","movement_type","lot_id","product_id","warehouse_id","transaction_id","parent_ref_type","parent_ref_id","qty","unit","ref_type","ref_id","issued_to","remark","created_by","created_at","updated_by","updated_at","system_remark"
+  ]),
+  // 庫存快照（查詢加速；真相仍為 inventory_movement，可 dev_rebuild_lot_balance 重算）
+  lot_balance: SCHEMA_FIELDS_([
+    "lot_id","available_qty","movement_count","last_movement_id","updated_at","updated_by"
   ]),
   goods_receipt: SCHEMA_FIELDS_([
     "gr_id","po_id","transaction_id","parent_ref_type","parent_ref_id","receipt_date","warehouse","status","remark","created_by","created_at","updated_by","updated_at","system_remark"
@@ -209,6 +235,7 @@ function SCHEMA_FIELDS_(arr){
   return arr.slice();
 }
 
+// #SEC:LOGS
 /* =================================================
    LOGS 設定
 ================================================= */
@@ -262,6 +289,54 @@ function writeLog(tableName, referenceId, actionType, oldObj, newObj, actor) {
   sheet.appendRow(row);
 }
 
+/**
+ * 整單／高風險作業稽核（寫入 logs；與逐列 CREATE/UPDATE 互補）
+ * @param {string} tableName 主單據表名（如 shipment、goods_receipt）
+ * @param {string} referenceId 主鍵
+ * @param {string} bundleAction 如 POST_SHIPMENT、CANCEL_IMPORT_RECEIPT
+ */
+function writeAuditBundle_(tableName, referenceId, bundleAction, detail, actor) {
+  try {
+    const act = "BUNDLE_" + String(bundleAction || "").trim().toUpperCase();
+    writeLog(
+      String(tableName || "erp"),
+      String(referenceId || ""),
+      act,
+      null,
+      detail && typeof detail === "object" ? detail : { detail: detail },
+      String(actor || "")
+    );
+  } catch (_e) {
+    try {
+      Logger.log("writeAuditBundle_ failed: " + _e);
+    } catch (_e2) {}
+  }
+}
+
+function normalizeLogIso16_(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  let m = s.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
+  if (m) return m[1] + "T" + m[2];
+  m = s.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})/);
+  if (m) return m[1] + "T" + m[2];
+  m = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})\s+(\d{2}:\d{2})/);
+  if (m) {
+    const pad2 = function (n) { return String(n).padStart(2, "0"); };
+    return m[1] + "-" + pad2(m[2]) + "-" + pad2(m[3]) + "T" + m[4];
+  }
+  m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1] + "T00:00";
+  return s;
+}
+
+function logsCutoffIso16_(days) {
+  const d = new Date();
+  d.setDate(d.getDate() - (isNaN(days) ? 90 : Math.max(0, days)));
+  const pad = function (n) { return String(n).padStart(2, "0"); };
+  return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T00:00";
+}
+
 /* =================================================
    ROUTER
 ================================================= */
@@ -289,6 +364,8 @@ const ROUTES = {
 
   // Logs 模組：前端 Logs 頁面使用
   list_logs: listLogs,
+  list_logs_recent: listLogsRecent,
+  list_logs_by_ref: listLogsByRef,
   // 一次性工具：修正 logs 時間（UTC→台灣 +8 小時）
   // 用法：POST {action:"fix_logs_time_plus8", dry_run:"1"|"0"}
   fix_logs_time_plus8: fixLogsTimePlus8,
@@ -353,6 +430,7 @@ const ROUTES = {
   list_inventory_movement_recent: listInventoryMovementRecent,
   // 彙總可用量（lot_id -> sum(qty)），供 Lots/出貨/委外/倉庫庫存用，避免全表傳輸
   list_inventory_movement_available_by_lot: listInventoryMovementAvailableByLot,
+  list_lots_missing_movement: listLotsMissingMovement,
   // 篩選查詢：依 ref/lot 取 movements（避免前端全表下載）
   list_inventory_movement_by_ref: listInventoryMovementByRef,
   list_inventory_movement_by_lot: listInventoryMovementByLot,
@@ -463,6 +541,13 @@ const ROUTES = {
   // Bundle（後端一次完成：出貨作廢 + 反沖 + 回寫 SO）
   cancel_shipment_bundle: cancelShipmentBundle,
 
+  // Bundle（後端一次完成：合批過帳 + 扣庫 + 關聯 lot_relation）
+  post_merge_bundle: postMergeBundle,
+  // Bundle（後端一次完成：拆批過帳 + 扣庫 + 建新 lot + 關聯 lot_relation）
+  post_split_bundle: postSplitBundle,
+  // Bundle（後端一次完成：轉倉 + 建新 lot + IN/OUT movements）
+  post_transfer_bundle: postTransferBundle,
+
   // Users（使用者）
   list_user: listUser,
   login: loginUser,
@@ -478,7 +563,8 @@ const ROUTES = {
 
   dev_clear_non_master: devClearNonMaster,
   dev_seed_smoke_fixtures: devSeedSmokeFixtures,
-  dev_cleanup_smoke_fixtures: devCleanupSmokeFixtures
+  dev_cleanup_smoke_fixtures: devCleanupSmokeFixtures,
+  dev_rebuild_lot_balance: devRebuildLotBalance
 };
 
 /* =================================================
@@ -496,7 +582,7 @@ function fixLogsTimePlus8(p){
   const actor = String(p && (p.updated_by || p.created_by) || "").trim();
   // 權限：僅 ADMIN 可跑
   const perm = requireErpRole_(actor, ["ADMIN"]);
-  if (perm && perm.success === false) return perm;
+  if (perm) return perm;
 
   const sheet = getLogSheet();
   if(!sheet) return jsonError("logs sheet not found");
@@ -533,6 +619,573 @@ function fixLogsTimePlus8(p){
     sheet.getRange(2, idx+1, outVals.length, 1).setValues(outVals);
   }
   return jsonSuccess({ message: dry ? "Dry run" : "Updated", dry_run: dry, scanned: scanned, updated: updated });
+}
+
+/* =================================================
+   MERGE（合批）
+   - Phase 1：收斂庫存異動到 bundle，避免前端分段 createRecord 造成不一致
+================================================= */
+
+/**
+ * Bundle：合批過帳
+ * params:
+ * - new_lot_id
+ * - ref_id (optional) : 用於追溯/lot.source_id/ref_id；未提供則後端生成
+ * - remark (optional) : 寫入新 lot.remark
+ * - lines_json : [{ lot_id, qty }]
+ * - idempotency_key (optional)
+ *
+ * 行為：
+ * - 建立新 lot（source_type=MERGE, source_id=ref_id, qty=total）
+ * - 建立 movement：IN（new lot）、OUT（source lots）
+ * - 建立 lot_relation：MERGE（from->to）
+ */
+function postMergeBundle(p){
+  const actor = String(p && (p.updated_by || p.created_by) || "").trim();
+  if(!actor) return jsonError("updated_by required");
+
+  const newLotId = String(p && (p.new_lot_id || p.newLotId || "") || "").trim().toUpperCase();
+  if(!newLotId) return jsonError("new_lot_id required");
+
+  const refId = String(p && (p.ref_id || p.refId || "") || "").trim().toUpperCase() || buildId_("MERGE");
+  const remark = String(p && (p.remark || "") || "").trim();
+
+  let lines = [];
+  try{
+    const raw = String(p && (p.lines_json || p.linesJson || "") || "").trim();
+    if(!raw) return jsonError("lines_json required");
+    const arr = JSON.parse(raw);
+    if(!Array.isArray(arr)) return jsonError("lines_json must be array");
+    lines = arr;
+  }catch(_e){
+    return jsonError("lines_json invalid JSON");
+  }
+
+  if(lines.length < 2) return jsonError("merge requires at least 2 source lots");
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try{
+    // 先驗證：避免重送前就寫入任何東西
+    const seen = {};
+    let total = 0;
+    let productId = "";
+    let unit = "";
+    let warehouseId = "";
+    let lotType = "";
+    let lotStatus = "";
+
+    for(let i=0;i<lines.length;i++){
+      const it = lines[i] || {};
+      const lotId = String(it.lot_id || it.lotId || "").trim().toUpperCase();
+      const qtyNum = Number(it.qty || 0);
+      if(!lotId) return jsonError("lines_json[" + i + "].lot_id required");
+      if(!(qtyNum > 0)) return jsonError("lines_json[" + i + "].qty must be > 0");
+      if(seen[lotId]) return jsonError("duplicate lot_id: " + lotId);
+      seen[lotId] = true;
+
+      const lot = getOne("lot","lot_id",lotId);
+      if(!lot) return jsonError("Lot not found: " + lotId);
+      const failAvail = assertLotMovementQty_(lotId, qtyNum, "Lot");
+      if(failAvail) return failAvail;
+
+      const pid = String(lot.product_id || "").trim().toUpperCase();
+      const u = String(lot.unit || "").trim();
+      const wh = String(lot.warehouse_id || "MAIN").trim().toUpperCase() || "MAIN";
+
+      if(!productId) productId = pid;
+      if(!unit) unit = u;
+      if(!warehouseId) warehouseId = wh;
+      if(!lotType) lotType = String(lot.type || "").trim();
+      if(!lotStatus) lotStatus = String(lot.status || "").trim();
+
+      if(pid && productId && pid !== productId) return jsonError("All source lots must have same product_id");
+      if(u && unit && u !== unit) return jsonError("All source lots must have same unit");
+      // 倉別：保守要求相同（若要跨倉合批，需另開 transfer/merge 規格）
+      if(wh && warehouseId && wh !== warehouseId) return jsonError("All source lots must be in same warehouse");
+
+      total += qtyNum;
+    }
+
+    // 新 lot 不可重複
+    const exists = getOne("lot","lot_id",newLotId);
+    if(exists) return jsonError("New lot_id already exists: " + newLotId);
+
+    // idempotency gate：全部驗證通過後才進 gate
+    const idem = consumeIdempotencyKey_("POST_MERGE_BUNDLE", p && p.idempotency_key, 600);
+    if(!idem.ok) return jsonErrorCode("ERR_DUPLICATE_REQUEST", "Duplicate request detected. Please reload and try again");
+
+    const txId = buildTxId_();
+
+    // 1) create new lot
+    const lotRes = createLot({
+      lot_id: newLotId,
+      product_id: productId,
+      warehouse_id: warehouseId || "MAIN",
+      source_type: "MERGE",
+      source_id: refId,
+      qty: String(total),
+      unit: unit,
+      type: lotType || "WIP",
+      status: lotStatus || "APPROVED",
+      inventory_status: "ACTIVE",
+      received_date: nowIso16(),
+      manufacture_date: "",
+      expiry_date: "",
+      remark: remark || "",
+      created_by: actor,
+      created_at: nowIso16(),
+      updated_by: "",
+      updated_at: "",
+      system_remark: "Merge lots -> " + refId
+    });
+    var _failMergeLot = bundleStepFail_(lotRes);
+    if(_failMergeLot) return _failMergeLot;
+
+    // 2) IN to new
+    const mvIn = createInventoryMovementUnlocked_({
+      movement_id: buildId_("MV"),
+      movement_type: "IN",
+      lot_id: newLotId,
+      product_id: productId,
+      warehouse_id: warehouseId || "MAIN",
+      transaction_id: txId,
+      parent_ref_type: "MERGE",
+      parent_ref_id: refId,
+      qty: String(Math.abs(total)),
+      unit: unit,
+      ref_type: "MERGE",
+      ref_id: refId,
+      issued_to: "",
+      remark: "",
+      created_by: actor,
+      created_at: nowIso16(),
+      updated_by: "",
+      updated_at: "",
+      system_remark: "Merge IN: " + refId
+    });
+    var _failMergeMvIn = bundleStepFail_(mvIn);
+    if(_failMergeMvIn) return _failMergeMvIn;
+
+    // 3) OUT from sources + relations
+    for(let i=0;i<lines.length;i++){
+      const it = lines[i] || {};
+      const lotId = String(it.lot_id || it.lotId || "").trim().toUpperCase();
+      const qtyNum = Number(it.qty || 0);
+      const srcLot = getOne("lot","lot_id",lotId);
+
+      const mvOut = createInventoryMovementUnlocked_({
+        movement_id: buildId_("MV"),
+        movement_type: "OUT",
+        lot_id: lotId,
+        product_id: String(srcLot && srcLot.product_id || productId),
+        warehouse_id: String(srcLot && srcLot.warehouse_id || warehouseId || "MAIN").trim().toUpperCase() || "MAIN",
+        transaction_id: txId,
+        parent_ref_type: "MERGE",
+        parent_ref_id: refId,
+        qty: String(-Math.abs(qtyNum)),
+        unit: String(srcLot && srcLot.unit || unit),
+        ref_type: "MERGE",
+        ref_id: refId,
+        issued_to: "",
+        remark: "",
+        created_by: actor,
+        created_at: nowIso16(),
+        updated_by: "",
+        updated_at: "",
+        system_remark: "Merge OUT: " + refId
+      });
+      var _failMergeMvOut = bundleStepFail_(mvOut);
+      if(_failMergeMvOut) return _failMergeMvOut;
+
+      const relRes = createLotRelation({
+        relation_id: "REL-" + refId + "-" + String(i+1).padStart(3,"0"),
+        relation_type: "MERGE",
+        from_lot_id: lotId,
+        to_lot_id: newLotId,
+        qty: String(qtyNum),
+        unit: String(srcLot && srcLot.unit || unit),
+        ref_type: "MERGE",
+        ref_id: refId,
+        transaction_id: txId,
+        parent_ref_type: "MERGE",
+        parent_ref_id: refId,
+        created_by: actor,
+        created_at: nowIso16()
+      });
+      var _failMergeRel = bundleStepFail_(relRes);
+      if(_failMergeRel) return _failMergeRel;
+    }
+
+    writeAuditBundle_("lot", newLotId, "POST_MERGE", { ref_id: refId, new_lot_id: newLotId, line_count: lines.length }, actor);
+    return jsonSuccess({
+      message: "MERGED",
+      ref_id: refId,
+      new_lot_id: newLotId
+    });
+  }finally{
+    lock.releaseLock();
+  }
+}
+
+/* =================================================
+   SPLIT（拆批）
+================================================= */
+
+/**
+ * Bundle：拆批過帳
+ * params:
+ * - source_lot_id
+ * - ref_id (optional) : 用於追溯/lot.source_id/ref_id；未提供則後端生成
+ * - lines_json : [{ new_lot_id, qty, unit, remark }]
+ * - idempotency_key (optional)
+ *
+ * 行為：
+ * - source OUT（一次扣總量）
+ * - 逐筆建立新 lot（沿用來源 lot 的 type/status/日期）+ IN + lot_relation(SPLIT)
+ */
+function postSplitBundle(p){
+  const actor = String(p && (p.updated_by || p.created_by) || "").trim();
+  if(!actor) return jsonError("updated_by required");
+
+  const sourceLotId = String(p && (p.source_lot_id || p.sourceLotId || "") || "").trim().toUpperCase();
+  if(!sourceLotId) return jsonError("source_lot_id required");
+
+  const refId = String(p && (p.ref_id || p.refId || "") || "").trim().toUpperCase() || buildId_("SPLIT");
+
+  let lines = [];
+  try{
+    const raw = String(p && (p.lines_json || p.linesJson || "") || "").trim();
+    if(!raw) return jsonError("lines_json required");
+    const arr = JSON.parse(raw);
+    if(!Array.isArray(arr)) return jsonError("lines_json must be array");
+    lines = arr;
+  }catch(_e){
+    return jsonError("lines_json invalid JSON");
+  }
+
+  if(lines.length < 1) return jsonError("split requires at least 1 new lot");
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try{
+    const srcLot = getOne("lot","lot_id",sourceLotId);
+    if(!srcLot) return jsonError("Lot not found: " + sourceLotId);
+
+    const srcProduct = String(srcLot.product_id || "").trim().toUpperCase();
+    const srcUnit = String(srcLot.unit || "").trim();
+    const srcWh = String(srcLot.warehouse_id || "MAIN").trim().toUpperCase() || "MAIN";
+
+    // 驗證 lines
+    const seenNew = {};
+    let total = 0;
+    for(let i=0;i<lines.length;i++){
+      const it = lines[i] || {};
+      const newLotId = String(it.new_lot_id || it.newLotId || "").trim().toUpperCase();
+      const qtyNum = Number(it.qty || 0);
+      const unit = String(it.unit || srcUnit || "").trim();
+      if(!newLotId) return jsonError("lines_json[" + i + "].new_lot_id required");
+      if(!(qtyNum > 0)) return jsonError("lines_json[" + i + "].qty must be > 0");
+      if(seenNew[newLotId]) return jsonError("duplicate new_lot_id: " + newLotId);
+      seenNew[newLotId] = true;
+      if(!unit) return jsonError("lines_json[" + i + "].unit required");
+      if(srcUnit && unit !== srcUnit) return jsonError("All new lots must use same unit as source lot");
+
+      const exists = getOne("lot","lot_id",newLotId);
+      if(exists) return jsonError("New lot_id already exists: " + newLotId);
+
+      total += qtyNum;
+    }
+
+    const failSplitAvail = assertLotMovementQty_(sourceLotId, total, "Split");
+    if(failSplitAvail) return failSplitAvail;
+
+    // idempotency gate：全部驗證通過後才進 gate
+    const idem = consumeIdempotencyKey_("POST_SPLIT_BUNDLE", p && p.idempotency_key, 600);
+    if(!idem.ok) return jsonErrorCode("ERR_DUPLICATE_REQUEST", "Duplicate request detected. Please reload and try again");
+
+    const txId = buildTxId_();
+
+    // 1) source OUT
+    const mvOut = createInventoryMovementUnlocked_({
+      movement_id: buildId_("MV"),
+      movement_type: "OUT",
+      lot_id: sourceLotId,
+      product_id: srcProduct,
+      warehouse_id: srcWh,
+      transaction_id: txId,
+      parent_ref_type: "SPLIT",
+      parent_ref_id: refId,
+      qty: String(-Math.abs(total)),
+      unit: srcUnit,
+      ref_type: "SPLIT",
+      ref_id: refId,
+      issued_to: "",
+      remark: "",
+      created_by: actor,
+      created_at: nowIso16(),
+      updated_by: "",
+      updated_at: "",
+      system_remark: "Split OUT: " + refId
+    });
+    var _failSplitMvOut = bundleStepFail_(mvOut);
+    if(_failSplitMvOut) return _failSplitMvOut;
+
+    // 2) new lots + IN + relations
+    for(let i=0;i<lines.length;i++){
+      const it = lines[i] || {};
+      const newLotId = String(it.new_lot_id || it.newLotId || "").trim().toUpperCase();
+      const qtyNum = Number(it.qty || 0);
+      const unit = String(it.unit || srcUnit || "").trim();
+      const remark = String(it.remark || "").trim();
+
+      const lotRes = createLot({
+        lot_id: newLotId,
+        product_id: srcProduct,
+        warehouse_id: srcWh,
+        source_type: "SPLIT",
+        source_id: refId,
+        qty: String(qtyNum),
+        unit: unit,
+        type: String(srcLot.type || "").trim(),
+        status: String(srcLot.status || "").trim() || "APPROVED",
+        inventory_status: "ACTIVE",
+        received_date: nowIso16(),
+        manufacture_date: String(srcLot.manufacture_date || ""),
+        expiry_date: String(srcLot.expiry_date || ""),
+        remark: remark || "",
+        created_by: actor,
+        created_at: nowIso16(),
+        updated_by: "",
+        updated_at: "",
+        system_remark: "Split from " + sourceLotId
+      });
+      var _failSplitLot = bundleStepFail_(lotRes);
+      if(_failSplitLot) return _failSplitLot;
+
+      const mvIn = createInventoryMovementUnlocked_({
+        movement_id: buildId_("MV"),
+        movement_type: "IN",
+        lot_id: newLotId,
+        product_id: srcProduct,
+        warehouse_id: srcWh,
+        transaction_id: txId,
+        parent_ref_type: "SPLIT",
+        parent_ref_id: refId,
+        qty: String(Math.abs(qtyNum)),
+        unit: unit,
+        ref_type: "SPLIT",
+        ref_id: refId,
+        issued_to: "",
+        remark: "",
+        created_by: actor,
+        created_at: nowIso16(),
+        updated_by: "",
+        updated_at: "",
+        system_remark: "Split IN: " + refId
+      });
+      var _failSplitMvIn = bundleStepFail_(mvIn);
+      if(_failSplitMvIn) return _failSplitMvIn;
+
+      const relRes = createLotRelation({
+        relation_id: "REL-" + refId + "-" + String(i+1).padStart(3,"0"),
+        relation_type: "SPLIT",
+        from_lot_id: sourceLotId,
+        to_lot_id: newLotId,
+        qty: String(qtyNum),
+        unit: unit,
+        ref_type: "SPLIT",
+        ref_id: refId,
+        transaction_id: txId,
+        parent_ref_type: "SPLIT",
+        parent_ref_id: refId,
+        created_by: actor,
+        created_at: nowIso16()
+      });
+      var _failSplitRel = bundleStepFail_(relRes);
+      if(_failSplitRel) return _failSplitRel;
+    }
+
+    writeAuditBundle_("lot", sourceLotId, "POST_SPLIT", {
+      ref_id: refId,
+      source_lot_id: sourceLotId,
+      new_lot_ids: lines.map(function (x) { return String((x && (x.new_lot_id || x.newLotId)) || "").trim().toUpperCase(); }).filter(Boolean)
+    }, actor);
+    return jsonSuccess({
+      message: "SPLIT",
+      ref_id: refId,
+      source_lot_id: sourceLotId,
+      new_lot_ids: lines.map(x => String((x && (x.new_lot_id || x.newLotId)) || "").trim().toUpperCase()).filter(Boolean)
+    });
+  }finally{
+    lock.releaseLock();
+  }
+}
+
+/* =================================================
+   TRANSFER（轉倉）
+================================================= */
+
+/**
+ * Bundle：轉倉
+ * params:
+ * - from_lot_id
+ * - to_warehouse_id (or to_warehouse)
+ * - qty
+ * - remark (原因；必填)
+ * - idempotency_key (optional)
+ *
+ * 行為：
+ * - 建立新 lot（新倉別；沿用來源 lot 的 source_type/source_id/type/status/日期）
+ * - OUT：來源 lot 扣庫（ref_type=TRANSFER, ref_id=new_lot_id, remark=原因）
+ * - IN：新 lot 入庫（ref_type=TRANSFER, ref_id=from_lot_id）
+ *
+ * 規則（與前端一致，並由後端硬擋）：
+ * - 來源 lot 必須 inventory_status=ACTIVE 且未過期（VOID 不可）
+ * - qty 不可超過可用量（不允許負庫存）
+ * - 待QA（非 APPROVED）僅允許「全部轉」（qty == available）
+ */
+function postTransferBundle(p){
+  const actor = String(p && (p.updated_by || p.created_by) || "").trim();
+  if(!actor) return jsonError("updated_by required");
+
+  const fromLotId = String(p && (p.from_lot_id || p.fromLotId || "") || "").trim().toUpperCase();
+  if(!fromLotId) return jsonError("from_lot_id required");
+
+  const toWh = String(p && (p.to_warehouse_id || p.to_warehouse || p.toWarehouseId || p.toWarehouse || "") || "").trim().toUpperCase();
+  if(!toWh) return jsonError("to_warehouse_id required");
+
+  const qtyNum = Number(p && p.qty || 0);
+  if(!(qtyNum > 0)) return jsonError("qty must be > 0");
+
+  const userRemark = String(p && (p.remark || "") || "").trim();
+  if(!userRemark) return jsonError("remark required");
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try{
+    const lot = getOne("lot","lot_id",fromLotId);
+    if(!lot) return jsonError("Lot not found: " + fromLotId);
+
+    const fromWh = String(lot.warehouse_id || "").trim().toUpperCase();
+    if(fromWh && fromWh === toWh) return jsonError("to_warehouse_id must be different");
+
+    // 必須 ACTIVE + 未過期
+    const invSt = String(lot.inventory_status || "ACTIVE").trim().toUpperCase();
+    if(invSt !== "ACTIVE") return jsonError("Only ACTIVE lot can be transferred");
+    if(isLotExpired_(lot.expiry_date)) return jsonError("Expired lot (VOID) cannot be transferred");
+
+    const available = getAvailableQtyByLot_(fromLotId);
+    if(available === null) return jsonError("Lot has no inventory movement records: " + fromLotId);
+    if(available + 1e-9 < qtyNum) return jsonError("Transfer qty exceeds available qty");
+
+    // QA gate：待QA僅允許全部轉倉
+    const qa = String(lot.status || "PENDING").trim().toUpperCase();
+    if(qa !== "APPROVED"){
+      const isAll = Math.abs(Number(qtyNum || 0) - Number(available || 0)) <= 1e-9;
+      if(!isAll) return jsonError("Pending QA lot can only be transferred all quantity");
+    }
+
+    // idempotency gate
+    const idem = consumeIdempotencyKey_("POST_TRANSFER_BUNDLE", p && p.idempotency_key, 600);
+    if(!idem.ok) return jsonErrorCode("ERR_DUPLICATE_REQUEST", "Duplicate request detected. Please reload and try again");
+
+    const now = nowIso16();
+    const txId = buildTxId_();
+
+    const newLotId = buildId_("LOT");
+
+    // 新 lot：沿用來源的「來源」資訊，避免追溯斷掉
+    const srcType = String(lot.source_type || "").trim().toUpperCase();
+    const srcId = String(lot.source_id || "").trim();
+    const newLotRes = createLot({
+      lot_id: newLotId,
+      product_id: String(lot.product_id || ""),
+      warehouse_id: toWh,
+      source_type: srcType || "",
+      source_id: srcId || "",
+      qty: String(qtyNum),
+      unit: String(lot.unit || ""),
+      type: String(lot.type || ""),
+      status: String(lot.status || "PENDING"),
+      inventory_status: "ACTIVE",
+      received_date: String(lot.received_date || "").trim() || String(now).slice(0,10),
+      manufacture_date: String(lot.manufacture_date || ""),
+      expiry_date: String(lot.expiry_date || ""),
+      remark: "",
+      created_by: actor,
+      created_at: now,
+      updated_by: "",
+      updated_at: "",
+      system_remark: "Transfer from " + fromLotId + " (" + String(fromWh || "—") + " -> " + toWh + ")"
+    });
+    var _failTransferLot = bundleStepFail_(newLotRes);
+    if(_failTransferLot) return _failTransferLot;
+
+    const mvOut = createInventoryMovementUnlocked_({
+      movement_id: buildId_("MV"),
+      movement_type: "OUT",
+      lot_id: fromLotId,
+      product_id: String(lot.product_id || ""),
+      warehouse_id: String(fromWh || ""),
+      transaction_id: txId,
+      parent_ref_type: "TRANSFER",
+      parent_ref_id: newLotId,
+      qty: String(-Math.abs(qtyNum)),
+      unit: String(lot.unit || ""),
+      ref_type: "TRANSFER",
+      ref_id: newLotId,
+      issued_to: "",
+      remark: userRemark,
+      created_by: actor,
+      created_at: now,
+      updated_by: "",
+      updated_at: "",
+      system_remark: "Transfer OUT: " + fromLotId + " -> " + newLotId
+    });
+    var _failTransferMvOut = bundleStepFail_(mvOut);
+    if(_failTransferMvOut) return _failTransferMvOut;
+
+    const mvIn = createInventoryMovementUnlocked_({
+      movement_id: buildId_("MV"),
+      movement_type: "IN",
+      lot_id: newLotId,
+      product_id: String(lot.product_id || ""),
+      warehouse_id: toWh,
+      transaction_id: txId,
+      parent_ref_type: "TRANSFER",
+      parent_ref_id: newLotId,
+      qty: String(Math.abs(qtyNum)),
+      unit: String(lot.unit || ""),
+      ref_type: "TRANSFER",
+      ref_id: fromLotId,
+      issued_to: "",
+      remark: "",
+      created_by: actor,
+      created_at: now,
+      updated_by: "",
+      updated_at: "",
+      system_remark: "Transfer IN: " + newLotId + " <- " + fromLotId
+    });
+    var _failTransferMvIn = bundleStepFail_(mvIn);
+    if(_failTransferMvIn) return _failTransferMvIn;
+
+    writeAuditBundle_("lot", fromLotId, "POST_TRANSFER", {
+      from_lot_id: fromLotId,
+      new_lot_id: newLotId,
+      qty: String(qtyNum),
+      to_warehouse_id: toWh
+    }, actor);
+    return jsonSuccess({
+      message: "TRANSFERRED",
+      from_lot_id: fromLotId,
+      new_lot_id: newLotId,
+      qty: String(qtyNum),
+      to_warehouse_id: toWh
+    });
+  }finally{
+    lock.releaseLock();
+  }
 }
 
 /* =================================================
@@ -614,6 +1267,7 @@ function enforceDevGuards_(action, p){
   return null;
 }
 
+// #SEC:ROUTES
 function doGet(e) {
 
   const action = e.parameter.action;
@@ -624,6 +1278,14 @@ function doGet(e) {
 
   try {
     var pGet = copyWebParams_(e.parameter);
+    // 安全：禁止客戶端注入「系統內部旗標」（用來繞過 guards / 寫 system_remark）
+    try{
+      if(pGet && typeof pGet === "object"){
+        delete pGet._system_write;
+        delete pGet._systemWrite;
+        delete pGet.system_write;
+      }
+    }catch(_eStrip){}
     const devGate = enforceDevGuards_(action, pGet);
     if(devGate) return devGate;
     const gate = assertAuthenticatedUser_(action, pGet);
@@ -653,6 +1315,14 @@ function doPost(e) {
 
   try {
     var pPost = copyWebParams_(e.parameter);
+    // 安全：禁止客戶端注入「系統內部旗標」（用來繞過 guards / 寫 system_remark）
+    try{
+      if(pPost && typeof pPost === "object"){
+        delete pPost._system_write;
+        delete pPost._systemWrite;
+        delete pPost.system_write;
+      }
+    }catch(_eStrip){}
     const devGate = enforceDevGuards_(action, pPost);
     if(devGate) return devGate;
     const gate = assertAuthenticatedUser_(action, pPost);
@@ -673,6 +1343,7 @@ function doPost(e) {
   }
 }
 
+// #SEC:GENERIC
 /* =================================================
    GENERIC ENGINE
 ================================================= */
@@ -898,6 +1569,7 @@ function listByTx_(sheetName, txId, limit) {
   return out;
 }
 
+// #SEC:TRACE
 /**
  * v3.2 Trace：依 transaction_id 彙總整條鏈（Bundle）
  * params:
@@ -954,7 +1626,32 @@ function getOne(sheetName, idField, idValue) {
   return null;
 }
 
+/**
+ * Phase 1（交易一致性）：封鎖「會動庫存/追溯」交易表的通用寫入入口（create/update/delete）。
+ * - 這些表只能透過 bundle/command 維護，避免側門造成不一致。
+ * - 半交易（sales_order/purchase_order/import_document...）留待 Phase 2 收斂。
+ */
+const GENERIC_WRITE_BLOCKLIST_ = (function(){
+  // 注意：請維持與 SHEET_SCHEMAS 的 key 一致
+  return [
+    "shipment","shipment_item",
+    "goods_receipt","goods_receipt_item",
+    "import_receipt","import_receipt_item"
+  ];
+})();
+
+function isGenericWriteBlocked_(sheetName){
+  const s = String(sheetName || "").trim();
+  return GENERIC_WRITE_BLOCKLIST_.indexOf(s) !== -1;
+}
+
 function createGeneric(sheetName, params, idField) {
+
+  if (isGenericWriteBlocked_(sheetName)) {
+    // 僅允許後端 bundle/command 內部寫入（外部請求已於 doGet/doPost 剝離 _system_write）
+    const sys = params && String(params._system_write || "").trim() === "1";
+    if (!sys) return jsonError("Forbidden (transactional table): use bundle/command");
+  }
 
   const sheet = getSheet(sheetName);
   if (!sheet) return jsonError("Sheet not found: " + sheetName);
@@ -1006,6 +1703,11 @@ function createGeneric(sheetName, params, idField) {
 }
 
 function updateGeneric(sheetName, params, idField) {
+
+  if (isGenericWriteBlocked_(sheetName)) {
+    const sys = params && String(params._system_write || "").trim() === "1";
+    if (!sys) return jsonError("Forbidden (transactional table): use bundle/command");
+  }
 
   const sheet = getSheet(sheetName);
   if (!sheet) return jsonError("Sheet not found: " + sheetName);
@@ -1105,6 +1807,11 @@ function updateGeneric(sheetName, params, idField) {
 
 function deleteGeneric(sheetName, params, idField) {
 
+  if (isGenericWriteBlocked_(sheetName)) {
+    const sys = params && String(params._system_write || "").trim() === "1";
+    if (!sys) return jsonError("Forbidden (transactional table): use bundle/command");
+  }
+
   const sheet = getSheet(sheetName);
   if (!sheet) return jsonError("Sheet not found: " + sheetName);
 
@@ -1158,14 +1865,20 @@ function consumeIdempotencyKey_(actionName, idempotencyKey, ttlSeconds){
   const ttlMs = Math.max(1, Number(ttlSeconds || ERP_IDEMPOTENCY_TTL_SECONDS_)) * 1000;
   const propKey = "IDEMPOTENCY:" + action + ":" + key;
   const props = PropertiesService.getScriptProperties();
-  const now = Date.now();
-  const prevRaw = String(props.getProperty(propKey) || "").trim();
-  const prevTs = Number(prevRaw || 0);
-  if(prevTs && !isNaN(prevTs) && (now - prevTs) < ttlMs){
-    return { ok: false, key: key };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(8000);
+  try{
+    const now = Date.now();
+    const prevRaw = String(props.getProperty(propKey) || "").trim();
+    const prevTs = Number(prevRaw || 0);
+    if(prevTs && !isNaN(prevTs) && (now - prevTs) < ttlMs){
+      return { ok: false, key: key };
+    }
+    props.setProperty(propKey, String(now));
+    return { ok: true, key: key };
+  } finally {
+    try{ lock.releaseLock(); }catch(_e){}
   }
-  props.setProperty(propKey, String(now));
-  return { ok: true, key: key };
 }
 
 /* =================================================
@@ -1309,27 +2022,31 @@ function saveImportDocumentBundle(p) {
       return jsonError("Import items required");
     }
 
-    // upsert 主檔
-    const headerMode = upsertGeneric_("import_document", p, "import_doc_id");
-
-    // 明細：先刪後建（用 import_doc_id 關聯）
-    const deleted = deleteImportItemsByDocId_(importDocId);
-
-    // normalize items
-    const now = nowIso16();
-    const actor = p.updated_by || p.created_by || "";
-    items = items.map((it, idx) => {
-      const o = Object.assign({}, it);
-      o.import_doc_id = importDocId;
-      if (!o.import_item_id) o.import_item_id = "IMPI-" + importDocId + "-" + String(idx + 1).padStart(3, "0");
-      if (o.created_at == null || o.created_at === "") o.created_at = now;
-      if (o.created_by == null || o.created_by === "") o.created_by = actor;
-      if (o.updated_at == null) o.updated_at = "";
-      if (o.updated_by == null) o.updated_by = "";
-      return o;
-    });
-
-    const created = appendImportItems_(items);
+    var headerMode;
+    var deleted = 0;
+    var created = 0;
+    try {
+      // upsert 主檔
+      headerMode = upsertGeneric_("import_document", p, "import_doc_id");
+      // 明細：先刪後建（用 import_doc_id 關聯）
+      deleted = deleteImportItemsByDocId_(importDocId);
+      // normalize items
+      const now = nowIso16();
+      const actor = p.updated_by || p.created_by || "";
+      items = items.map((it, idx) => {
+        const o = Object.assign({}, it);
+        o.import_doc_id = importDocId;
+        if (!o.import_item_id) o.import_item_id = "IMPI-" + importDocId + "-" + String(idx + 1).padStart(3, "0");
+        if (o.created_at == null || o.created_at === "") o.created_at = now;
+        if (o.created_by == null || o.created_by === "") o.created_by = actor;
+        if (o.updated_at == null) o.updated_at = "";
+        if (o.updated_by == null) o.updated_by = "";
+        return o;
+      });
+      created = appendImportItems_(items);
+    } catch (bundleErr) {
+      return jsonError(String(bundleErr && bundleErr.message ? bundleErr.message : bundleErr || "Save import document failed"));
+    }
 
     return jsonSuccess({
       message: "Saved",
@@ -1361,7 +2078,7 @@ function resetImportItemsCmd(p){
     const actor = String(p && (p.updated_by || p.created_by) || "").trim();
     if(!actor) return jsonError("updated_by required");
     const perm = requireErpRole_(actor, ["ADMIN","OP","WH","WAREHOUSE"]);
-    if (perm && perm.success === false) return perm;
+    if (perm) return perm;
 
     // 主檔狀態限制：僅 OPEN 可重建明細
     const doc = (function(){
@@ -1530,6 +2247,7 @@ function deleteCustomer(p) {
   return softDeleteMaster_("customer", p, "customer_id");
 }
 
+// #SEC:WAREHOUSE
 /* =================================================
    WAREHOUSE
 ================================================= */
@@ -1553,6 +2271,101 @@ function deleteWarehouse(p) {
 }
 
 /* =================================================
+   PHASE 2 GUARDS（半交易：後端硬擋結構修改）
+   - 原則：已產生下游（收貨/出貨）後，不允許再改「結構欄位」（品項/數量/關聯），只允許備註/少數非結構欄位
+   - bundle/command 內部寫入需可繞過（使用 _system_write=1）
+================================================= */
+
+function isSystemWrite_(p){
+  return !!(p && (String(p._system_write || "").trim() === "1"));
+}
+
+function normalizeDocStatus_(s){
+  return String(s || "").trim().toUpperCase();
+}
+
+function isTerminalDocStatus_(s){
+  const st = normalizeDocStatus_(s);
+  // 終態：不應再允許結構修改（僅允許備註/少數欄位）
+  return (st === "CANCELLED" || st === "CLOSED" || st === "POSTED" || st === "SHIPPED");
+}
+
+function hasActiveGoodsReceiptByPoId_(poId){
+  const id = String(poId || "").trim().toUpperCase();
+  if(!id) return false;
+  const sheet = getSheet("goods_receipt");
+  if(!sheet) return false;
+  const data = sheet.getDataRange().getDisplayValues();
+  if(data.length < 2) return false;
+  const headers = data[0];
+  const idxPo = headers.indexOf("po_id");
+  const idxSt = headers.indexOf("status");
+  if(idxPo === -1) return false;
+  for(let i=1;i<data.length;i++){
+    if(String(data[i][idxPo] || "").trim().toUpperCase() !== id) continue;
+    const st = idxSt === -1 ? "" : String(data[i][idxSt] || "").trim().toUpperCase();
+    if(st !== "CANCELLED") return true;
+  }
+  return false;
+}
+
+function hasActiveImportReceiptByDocId_(docId){
+  const id = String(docId || "").trim().toUpperCase();
+  if(!id) return false;
+  const sheet = getSheet("import_receipt");
+  if(!sheet) return false;
+  const data = sheet.getDataRange().getDisplayValues();
+  if(data.length < 2) return false;
+  const headers = data[0];
+  const idxDoc = headers.indexOf("import_doc_id");
+  const idxSt = headers.indexOf("status");
+  if(idxDoc === -1) return false;
+  for(let i=1;i<data.length;i++){
+    if(String(data[i][idxDoc] || "").trim().toUpperCase() !== id) continue;
+    const st = idxSt === -1 ? "" : String(data[i][idxSt] || "").trim().toUpperCase();
+    if(st !== "CANCELLED") return true;
+  }
+  return false;
+}
+
+function hasAnyShipmentBySoId_(soId){
+  const id = String(soId || "").trim().toUpperCase();
+  if(!id) return false;
+  // 以 shipment_item 為準（最不會漏）：只要有任何明細，就視為已有出貨追溯
+  const sheet = getSheet("shipment_item");
+  if(!sheet) return false;
+  const data = sheet.getDataRange().getDisplayValues();
+  if(data.length < 2) return false;
+  const headers = data[0];
+  const idxSo = headers.indexOf("so_id");
+  if(idxSo === -1) return false;
+  for(let i=1;i<data.length;i++){
+    if(String(data[i][idxSo] || "").trim().toUpperCase() === id) return true;
+  }
+  return false;
+}
+
+function enforceOnlyAllowFields_(p, allowFields){
+  const obj = p && typeof p === "object" ? p : null;
+  if(!obj) return null;
+  const allow = {};
+  (allowFields || []).forEach(function(k){ allow[String(k||"")] = true; });
+  for(const k in obj){
+    if(!Object.prototype.hasOwnProperty.call(obj,k)) continue;
+    if(k === "action") continue;
+    if(k === "_system_write") continue;
+    if(allow[k]) continue;
+    // 允許後端/前端共同的 meta 欄位
+    if(k === "updated_by" || k === "updated_at" || k === "created_by" || k === "created_at") continue;
+    // 允許帶主鍵
+    if(/_id$/.test(k) && allow[k]) continue;
+    // 不在 allow list → 視為嘗試修改結構欄位
+    return k;
+  }
+  return null;
+}
+
+/* =================================================
    PURCHASE ORDER
 ================================================= */
 
@@ -1565,6 +2378,33 @@ function createPurchaseOrder(p) {
 }
 
 function updatePurchaseOrder(p) {
+  // Phase 2：已收貨（存在未作廢 GR）後，禁止修改結構欄位（供應商/日期/狀態等），僅允許備註與少數非結構欄位
+  if(!isSystemWrite_(p)){
+    const poId = String(p && p.po_id || "").trim().toUpperCase();
+    const existed = poId ? getOne("purchase_order","po_id",poId) : null;
+    if(existed && isTerminalDocStatus_(existed.status)){
+      const bad = enforceOnlyAllowFields_(p, [
+        "po_id",
+        "remark",
+        "document_link",
+        "system_remark",
+        "updated_by",
+        "updated_at"
+      ]);
+      if(bad) return jsonError("PO is " + normalizeDocStatus_(existed.status) + ". Only remark/document_link is allowed (blocked: " + bad + ")");
+    }
+    if(poId && hasActiveGoodsReceiptByPoId_(poId)){
+      const bad = enforceOnlyAllowFields_(p, [
+        "po_id",
+        "remark",
+        "document_link",
+        "system_remark",
+        "updated_by",
+        "updated_at"
+      ]);
+      if(bad) return jsonError("PO has receipts. Only remark/document_link is allowed (blocked: " + bad + ")");
+    }
+  }
   return updateGeneric("purchase_order", p, "po_id");
 }
 
@@ -1581,10 +2421,52 @@ function listPurchaseOrderItem() {
 }
 
 function createPurchaseOrderItem(p) {
+  // Phase 2：已收貨（PO 存在未作廢 GR）後，禁止再新增明細（避免用 API 側門塞新 item）
+  if(!isSystemWrite_(p)){
+    const poId = String(p && p.po_id || "").trim().toUpperCase();
+    const existed = poId ? getOne("purchase_order","po_id",poId) : null;
+    if(existed && isTerminalDocStatus_(existed.status)){
+      return jsonError("PO is " + normalizeDocStatus_(existed.status) + ". Creating new items is not allowed");
+    }
+    if(poId && hasActiveGoodsReceiptByPoId_(poId)){
+      return jsonError("PO has receipts. Creating new items is not allowed");
+    }
+  }
   return createGeneric("purchase_order_item", p, "po_item_id");
 }
 
 function updatePurchaseOrderItem(p) {
+  // Phase 2：已收貨（本 item received_qty>0 或 PO 有未作廢 GR）後，禁止改品項/數量/單位，只允許備註
+  if(!isSystemWrite_(p)){
+    const itemId = String(p && p.po_item_id || "").trim();
+    if(itemId){
+      const existed = getOne("purchase_order_item","po_item_id",itemId);
+      const poId = String((existed && existed.po_id) || (p && p.po_id) || "").trim().toUpperCase();
+      const po = poId ? getOne("purchase_order","po_id",poId) : null;
+      if(po && isTerminalDocStatus_(po.status)){
+        const bad = enforceOnlyAllowFields_(p, [
+          "po_item_id",
+          "remark",
+          "system_remark",
+          "updated_by",
+          "updated_at"
+        ]);
+        if(bad) return jsonError("PO is " + normalizeDocStatus_(po.status) + ". Only remark is allowed (blocked: " + bad + ")");
+      }
+      const received = Number(existed && existed.received_qty || 0);
+      const hasGr = poId ? hasActiveGoodsReceiptByPoId_(poId) : false;
+      if((received > 0) || hasGr){
+        const bad = enforceOnlyAllowFields_(p, [
+          "po_item_id",
+          "remark",
+          "system_remark",
+          "updated_by",
+          "updated_at"
+        ]);
+        if(bad) return jsonError("PO item already received. Only remark is allowed (blocked: " + bad + ")");
+      }
+    }
+  }
   return updateGeneric("purchase_order_item", p, "po_item_id");
 }
 
@@ -1605,6 +2487,33 @@ function createImportDocument(p) {
 }
 
 function updateImportDocument(p) {
+  // Phase 2：已收貨（存在未作廢 IR）後，禁止修改結構欄位（供應商/日期/單號等），僅允許備註與少數非結構欄位
+  if(!isSystemWrite_(p)){
+    const docId = String(p && p.import_doc_id || "").trim().toUpperCase();
+    const existed = docId ? getOne("import_document","import_doc_id",docId) : null;
+    if(existed && isTerminalDocStatus_(existed.status)){
+      const bad = enforceOnlyAllowFields_(p, [
+        "import_doc_id",
+        "remark",
+        "document_link",
+        "system_remark",
+        "updated_by",
+        "updated_at"
+      ]);
+      if(bad) return jsonError("Import document is " + normalizeDocStatus_(existed.status) + ". Only remark/document_link is allowed (blocked: " + bad + ")");
+    }
+    if(docId && hasActiveImportReceiptByDocId_(docId)){
+      const bad = enforceOnlyAllowFields_(p, [
+        "import_doc_id",
+        "remark",
+        "document_link",
+        "system_remark",
+        "updated_by",
+        "updated_at"
+      ]);
+      if(bad) return jsonError("Import document has receipts. Only remark/document_link is allowed (blocked: " + bad + ")");
+    }
+  }
   return updateGeneric("import_document", p, "import_doc_id");
 }
 
@@ -1621,10 +2530,50 @@ function listImportItem() {
 }
 
 function createImportItem(p) {
+  // Phase 2：已收貨（報單存在未作廢 IR）後，禁止再新增明細（避免用 API 側門塞新 item）
+  if(!isSystemWrite_(p)){
+    const docId = String(p && p.import_doc_id || "").trim().toUpperCase();
+    const existed = docId ? getOne("import_document","import_doc_id",docId) : null;
+    if(existed && isTerminalDocStatus_(existed.status)){
+      return jsonError("Import document is " + normalizeDocStatus_(existed.status) + ". Creating new items is not allowed");
+    }
+    if(docId && hasActiveImportReceiptByDocId_(docId)){
+      return jsonError("Import document has receipts. Creating new items is not allowed");
+    }
+  }
   return createGeneric("import_item", p, "import_item_id");
 }
 
 function updateImportItem(p) {
+  // Phase 2：已收貨（該報單存在未作廢 IR）後，禁止改品項/申報量/單位，只允許備註
+  if(!isSystemWrite_(p)){
+    const itemId = String(p && p.import_item_id || "").trim();
+    if(itemId){
+      const existed = getOne("import_item","import_item_id",itemId);
+      const docId = String((existed && existed.import_doc_id) || (p && p.import_doc_id) || "").trim().toUpperCase();
+      const doc = docId ? getOne("import_document","import_doc_id",docId) : null;
+      if(doc && isTerminalDocStatus_(doc.status)){
+        const bad = enforceOnlyAllowFields_(p, [
+          "import_item_id",
+          "remark",
+          "system_remark",
+          "updated_by",
+          "updated_at"
+        ]);
+        if(bad) return jsonError("Import document is " + normalizeDocStatus_(doc.status) + ". Only remark is allowed (blocked: " + bad + ")");
+      }
+      if(docId && hasActiveImportReceiptByDocId_(docId)){
+        const bad = enforceOnlyAllowFields_(p, [
+          "import_item_id",
+          "remark",
+          "system_remark",
+          "updated_by",
+          "updated_at"
+        ]);
+        if(bad) return jsonError("Import item already received. Only remark is allowed (blocked: " + bad + ")");
+      }
+    }
+  }
   return updateGeneric("import_item", p, "import_item_id");
 }
 
@@ -1632,6 +2581,7 @@ function deleteImportItem(p) {
   return jsonError("Deletion is not allowed. Use bundle save / correction flow instead");
 }
 
+// #SEC:RECEIVE
 /* =================================================
    IMPORT RECEIPT
 ================================================= */
@@ -1688,7 +2638,7 @@ function postImportReceiptBundle(p){
     if(!warehouse) return jsonError("warehouse required");
     if(!actor) return jsonError("created_by required");
     const perm = requireErpRole_(actor, ["ADMIN","OP","WH","WAREHOUSE"]);
-    if (perm && perm.success === false) return perm;
+    if (perm) return perm;
     const expectedItems = Number(p.expected_existed_import_receipt_item_count || 0);
     if(isNaN(expectedItems)) return jsonError("expected_existed_import_receipt_item_count invalid");
 
@@ -1844,7 +2794,8 @@ function postImportReceiptBundle(p){
     if(!idem.ok) return jsonErrorCode("ERR_DUPLICATE_REQUEST", "Duplicate request detected. Please reload and try again");
 
     // 全部驗證通過後才建立收貨單（固定 POSTED）
-    createGeneric("import_receipt", {
+    var _failIrHdr = bundleStepFail_(createGeneric("import_receipt", {
+      _system_write: "1",
       import_receipt_id: rid,
       import_doc_id: docId,
       transaction_id: txId,
@@ -1858,7 +2809,8 @@ function postImportReceiptBundle(p){
       created_at: p.created_at || nowIso16(),
       updated_by: "",
       updated_at: ""
-    }, "import_receipt_id");
+    }, "import_receipt_id"));
+    if (_failIrHdr) return _failIrHdr;
 
     let created = 0;
     for(let i=0;i<lines.length;i++){
@@ -1885,7 +2837,7 @@ function postImportReceiptBundle(p){
       if(mfg && exp && exp < mfg) return jsonError("expiry_date cannot be earlier than manufacture_date (lines[" + i + "])");
 
       const lotId = "LOT-" + new Date().getTime() + "-" + i;
-      createGeneric("lot", {
+      var _failIrLot = bundleStepFail_(createGeneric("lot", {
         lot_id: lotId,
         product_id: productId,
         warehouse_id: warehouse || "MAIN",
@@ -1905,7 +2857,8 @@ function postImportReceiptBundle(p){
         updated_by: "",
         updated_at: "",
         system_remark: "Import: " + docId
-      }, "lot_id");
+      }, "lot_id"));
+      if (_failIrLot) return _failIrLot;
 
       const mvRes = createInventoryMovementUnlocked_({
         movement_id: "MV-" + new Date().getTime() + "-" + i,
@@ -1928,9 +2881,11 @@ function postImportReceiptBundle(p){
         updated_at: "",
         system_remark: "Import IN: " + docId
       });
-      if(mvRes && mvRes.success === false) return mvRes;
+      var _failIrMv = bundleStepFail_(mvRes);
+      if (_failIrMv) return _failIrMv;
 
-      createGeneric("import_receipt_item", {
+      var _failIrItem = bundleStepFail_(createGeneric("import_receipt_item", {
+        _system_write: "1",
         import_receipt_item_id: "IRI-" + rid + "-" + String(created + 1).padStart(3, "0"),
         import_receipt_id: rid,
         import_item_id: itemId,
@@ -1946,19 +2901,22 @@ function postImportReceiptBundle(p){
         created_at: nowIso16(),
         updated_by: "",
         updated_at: ""
-      }, "import_receipt_item_id");
+      }, "import_receipt_item_id"));
+      if (_failIrItem) return _failIrItem;
       created++;
     }
 
     if(created > 0){
-      updateGeneric("import_document", {
+      var _failIrDoc = bundleStepFail_(updateGeneric("import_document", {
         import_doc_id: docId,
         status: calcImportDocumentStatusByItems_(docId),
         updated_by: actor,
         updated_at: nowIso16()
-      }, "import_doc_id");
+      }, "import_doc_id"));
+      if (_failIrDoc) return _failIrDoc;
     }
 
+    writeAuditBundle_("import_receipt", rid, "POST_IMPORT_RECEIPT", { import_receipt_id: rid, created_lots: created }, actor);
     return jsonSuccess({ message: "POSTED", import_receipt_id: rid, created_lots: created });
   }finally{
     lock.releaseLock();
@@ -1985,7 +2943,7 @@ function cancelImportReceiptBundle(p){
     const actor = String(p && (p.updated_by || p.created_by) || "").trim();
     if(!actor) return jsonError("updated_by required");
     const perm = requireErpRole_(actor, ["ADMIN","OP","WH","WAREHOUSE"]);
-    if (perm && perm.success === false) return perm;
+    if (perm) return perm;
 
     const ir = getOne("import_receipt", "import_receipt_id", rid);
     if(!ir) return jsonError("Import receipt not found: " + rid);
@@ -2072,10 +3030,8 @@ function cancelImportReceiptBundle(p){
       if(!inMv) return jsonError("IN movement not found for lot " + lotId);
 
       const inQty = Math.abs(Number(inMv.qty || 0));
-      const available = getAvailableQtyByLot_(lotId);
-      if(available + 1e-9 < inQty){
-        return jsonError("Lot available qty insufficient for cancel: " + lotId);
-      }
+      const failCancelAvail = assertLotMovementQty_(lotId, inQty, "Cancel import");
+      if(failCancelAvail) return failCancelAvail;
       plan.push({ it, inMv, lotId, inQty });
     }
 
@@ -2087,7 +3043,7 @@ function cancelImportReceiptBundle(p){
     for(let i=0;i<plan.length;i++){
       const x = plan[i];
       const inMv = x.inMv;
-      createInventoryMovementUnlocked_({
+      var _failCirMv = bundleStepFail_(createInventoryMovementUnlocked_({
         movement_id: buildId_("MV"),
         movement_type: "ADJUST",
         lot_id: x.lotId,
@@ -2107,23 +3063,25 @@ function cancelImportReceiptBundle(p){
         updated_by: "",
         updated_at: "",
         system_remark: "REVERSAL(IN) of " + String(inMv.movement_id || "") + voidTag
-      });
+      }));
+      if (_failCirMv) return _failCirMv;
     }
 
     for(let i=0;i<plan.length;i++){
-      updateGeneric("lot", {
+      var _failCirLot = bundleStepFail_(updateGeneric("lot", {
         lot_id: plan[i].lotId,
         inventory_status: "VOID",
         status: "REJECTED",
         updated_by: actor,
         updated_at: nowIso16()
-      }, "lot_id");
+      }, "lot_id"));
+      if (_failCirLot) return _failCirLot;
     }
 
     // update import_receipt status + remark
     const prevRemark = String(ir.remark || "").trim();
     const nextRemark = voidLine ? (prevRemark ? (prevRemark + "\n[作廢 " + nowIso16() + "] " + voidLine) : ("[作廢 " + nowIso16() + "] " + voidLine)) : prevRemark;
-    updateGeneric("import_receipt", {
+    var _failCirHdr = bundleStepFail_(updateGeneric("import_receipt", {
       import_receipt_id: rid,
       transaction_id: txId,
       parent_ref_type: String(ir.import_doc_id || "") ? "IMPORT_DOCUMENT" : "",
@@ -2133,22 +3091,25 @@ function cancelImportReceiptBundle(p){
       updated_by: actor,
       updated_at: nowIso16(),
       _system_write: "1"
-    }, "import_receipt_id");
+    }, "import_receipt_id"));
+    if (_failCirHdr) return _failCirHdr;
 
     // 回寫報單狀態：若仍有未作廢收貨單 → CLOSED；否則 OPEN（除非報單已取消）
     try{
       const docId = String(ir.import_doc_id || "").trim().toUpperCase();
       const doc = getOne("import_document", "import_doc_id", docId);
       if(doc && String(doc.status || "").toUpperCase() !== "CANCELLED"){
-        updateGeneric("import_document", {
+        var _failCirDoc = bundleStepFail_(updateGeneric("import_document", {
           import_doc_id: docId,
           status: calcImportDocumentStatusByItems_(docId),
           updated_by: actor,
           updated_at: nowIso16()
-        }, "import_doc_id");
+        }, "import_doc_id"));
+        if (_failCirDoc) return _failCirDoc;
       }
     }catch(_e){}
 
+    writeAuditBundle_("import_receipt", rid, "CANCEL_IMPORT_RECEIPT", { import_receipt_id: rid }, actor);
     return jsonSuccess({ message: "CANCELLED", import_receipt_id: rid });
   }finally{
     lock.releaseLock();
@@ -2180,8 +3141,10 @@ function listLot() {
 
   for (let i = 1; i < data.length; i++) {
     const lot = rowToObject(headers, data[i]);
-    const availableQty = Number(availableMap[lot.lot_id] || 0);
-    lot.inventory_status = desiredInventoryStatusForLot_(lot, availableQty);
+    const lotId = String(lot.lot_id || "").trim();
+    if (lotId && Object.prototype.hasOwnProperty.call(availableMap, lotId)) {
+      lot.inventory_status = desiredInventoryStatusForLot_(lot, Number(availableMap[lotId] || 0));
+    }
     result.push(lot);
   }
 
@@ -2190,7 +3153,8 @@ function listLot() {
 
 function createLot(p) {
   const srcCheck = validateLotSource_(p);
-  if (srcCheck && srcCheck.success === false) return srcCheck;
+  // validateLotSource_ 回傳 null（通過）或 jsonError(...)（TextOutput）
+  if (srcCheck) return srcCheck;
 
   // lot.status 若未指定，預設 PENDING
   if (!p.status) p.status = "PENDING";
@@ -2227,6 +3191,7 @@ function deleteLot(p) {
   return jsonError("Deletion is not allowed. Use inventory_status/status flow instead");
 }
 
+// #SEC:INVENTORY
 /* =================================================
    INVENTORY MOVEMENT
    - 不允許負庫存
@@ -2312,7 +3277,22 @@ function listInventoryMovementRecent(p){
 
 function listInventoryMovementAvailableByLot(){
   const map = getAvailableQtyByLots_();
-  return jsonSuccess(map || {});
+  const missing = listLotsMissingMovementIds_(0);
+  return jsonSuccess({
+    data: map || {},
+    missing_movement_count: missing.length,
+    missing_lot_ids: missing.slice(0, 100),
+    balance_source: isLotBalanceEnabled_() ? "lot_balance" : "movements"
+  });
+}
+
+function listLotsMissingMovement(p) {
+  const limit = Number(p && p.limit || 0);
+  const ids = listLotsMissingMovementIds_(isNaN(limit) ? 0 : limit);
+  return jsonSuccess({
+    data: ids,
+    count: ids.length
+  });
 }
 
 function listInventoryMovementByRef(p){
@@ -2430,29 +3410,210 @@ function getLotById_(lotId) {
   return null;
 }
 
-function getAvailableQtyByLot_(lotId) {
+var LOT_BALANCE_CACHE_KEY_ = "erp_lot_balance_map_v1";
+var LOT_BALANCE_CACHE_SEC_ = 60;
+
+function invalidateLotBalanceCache_() {
+  try {
+    CacheService.getScriptCache().remove(LOT_BALANCE_CACHE_KEY_);
+  } catch (_e) {}
+}
+
+/** lot_balance 表已有資料列時啟用快照查詢 */
+function isLotBalanceEnabled_() {
+  const sheet = getSheet("lot_balance");
+  if (!sheet) return false;
+  return sheet.getLastRow() > 1;
+}
+
+/**
+ * 從 lot_balance 讀取 lot_id -> available_qty（不含缺 movement 的 lot）
+ */
+function loadLotBalanceMap_() {
+  const sheet = getSheet("lot_balance");
+  if (!sheet) return {};
+  const data = sheet.getDataRange().getDisplayValues();
+  if (data.length < 2) return {};
+  const headers = data[0];
+  const idxLot = headers.indexOf("lot_id");
+  const idxQty = headers.indexOf("available_qty");
+  if (idxLot === -1 || idxQty === -1) return {};
+  const map = {};
+  for (let i = 1; i < data.length; i++) {
+    const lotId = String(data[i][idxLot] || "").trim();
+    if (!lotId) continue;
+    const q = Number(data[i][idxQty] || 0);
+    map[lotId] = isNaN(q) ? 0 : q;
+  }
+  return map;
+}
+
+function findLotBalanceRowIndex_(lotId) {
+  const id = String(lotId || "").trim();
+  if (!id) return -1;
+  const sheet = getSheet("lot_balance");
+  if (!sheet || sheet.getLastRow() < 2) return -1;
+  const data = sheet.getDataRange().getDisplayValues();
+  const headers = data[0];
+  const idxLot = headers.indexOf("lot_id");
+  if (idxLot === -1) return -1;
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][idxLot] || "").trim() === id) return i + 1;
+  }
+  return -1;
+}
+
+/** movement 寫入成功後增量更新快照（真相仍為 movement；失敗僅記 log，不推翻 movement） */
+function applyLotBalanceDelta_(lotId, qtyDelta, movementId, actor) {
+  const id = String(lotId || "").trim();
+  if (!id) return;
+  const d = Number(qtyDelta || 0);
+  if (isNaN(d)) return;
+
+  const sheet = getSheet("lot_balance");
+  const expected = SHEET_SCHEMAS.lot_balance;
+  if (!sheet || !expected) return;
+
+  const headers = expected;
+  const idxLot = headers.indexOf("lot_id");
+  const idxQty = headers.indexOf("available_qty");
+  const idxCnt = headers.indexOf("movement_count");
+  const idxLastMv = headers.indexOf("last_movement_id");
+  const idxAt = headers.indexOf("updated_at");
+  const idxBy = headers.indexOf("updated_by");
+  const now = nowIso16();
+  const who = String(actor || "").trim();
+  const mvId = String(movementId || "").trim();
+
+  const row1 = findLotBalanceRowIndex_(id);
+  if (row1 > 0) {
+    const curQty = Number(sheet.getRange(row1, idxQty + 1).getValue() || 0);
+    const curCnt = Number(sheet.getRange(row1, idxCnt + 1).getValue() || 0);
+    sheet.getRange(row1, idxQty + 1).setValue(String(curQty + d));
+    sheet.getRange(row1, idxCnt + 1).setValue(String(curCnt + 1));
+    if (mvId) sheet.getRange(row1, idxLastMv + 1).setValue(mvId);
+    sheet.getRange(row1, idxAt + 1).setValue(now);
+    sheet.getRange(row1, idxBy + 1).setValue(who);
+  } else {
+    sheet.appendRow([
+      id,
+      String(d),
+      "1",
+      mvId,
+      now,
+      who
+    ]);
+  }
+  invalidateLotBalanceCache_();
+}
+
+function countMovementsByLotFromMovements_() {
   const sheet = getSheet("inventory_movement");
-  if (!sheet) return 0;
+  if (!sheet) return {};
+  const data = sheet.getDataRange().getDisplayValues();
+  if (data.length < 2) return {};
+  const headers = data[0];
+  const lotIdx = headers.indexOf("lot_id");
+  if (lotIdx === -1) return {};
+  const counts = {};
+  for (let i = 1; i < data.length; i++) {
+    const lotId = String(data[i][lotIdx] || "").trim();
+    if (!lotId) continue;
+    counts[lotId] = (counts[lotId] || 0) + 1;
+  }
+  return counts;
+}
+
+/**
+ * 依 movement 全表加總（真相來源；重建快照用）
+ * @returns {number|null}
+ */
+function getAvailableQtyByLotFromMovements_(lotId) {
+  const id = String(lotId || "").trim();
+  if (!id) return null;
+
+  const sheet = getSheet("inventory_movement");
+  if (!sheet) return null;
 
   const data = sheet.getDataRange().getDisplayValues();
-  if (data.length < 2) return 0;
+  if (data.length < 2) return null;
 
   const headers = data[0];
   const lotIdx = headers.indexOf("lot_id");
   const qtyIdx = headers.indexOf("qty");
-  if (lotIdx === -1 || qtyIdx === -1) return 0;
+  if (lotIdx === -1 || qtyIdx === -1) return null;
 
   let sum = 0;
+  let found = false;
   for (let i = 1; i < data.length; i++) {
-    if (data[i][lotIdx] === lotId) {
+    if (String(data[i][lotIdx] || "").trim() === id) {
+      found = true;
       const q = Number(data[i][qtyIdx] || 0);
       if (!isNaN(q)) sum += q;
     }
   }
-  return sum;
+  return found ? sum : null;
 }
 
-function getAvailableQtyByLots_() {
+/**
+ * 依 movement 加總可用量（對外：優先 lot_balance 快照）
+ * @returns {number|null} 有 movement 列則回傳加總（可為 0）；完全無 movement 則 null（缺 movement）
+ */
+function getAvailableQtyByLot_(lotId) {
+  const id = String(lotId || "").trim();
+  if (!id) return null;
+  if (isLotBalanceEnabled_()) {
+    const map = getAvailableQtyByLots_();
+    if (Object.prototype.hasOwnProperty.call(map, id)) {
+      return Number(map[id] || 0);
+    }
+    // 快照缺列但 movement 已有資料（例如 seed／舊資料）：以 movement 為準
+    return getAvailableQtyByLotFromMovements_(id);
+  }
+  return getAvailableQtyByLotFromMovements_(id);
+}
+
+/** bundle 用：缺 movement 或可用量不足時回 jsonError */
+function assertLotMovementQty_(lotId, needQty, label) {
+  const avail = getAvailableQtyByLot_(lotId);
+  if (avail === null) {
+    return jsonError((label || "Lot") + " has no inventory movement records: " + lotId);
+  }
+  const need = Number(needQty || 0);
+  if (avail + 1e-9 < need) {
+    return jsonError((label || "Lot") + " available qty insufficient: " + lotId);
+  }
+  return null;
+}
+
+/** 非 VOID 且 ACTIVE 的 lot，在 movement 表完全沒有任何列 */
+function listLotsMissingMovementIds_(limit) {
+  const cap = Math.max(0, Number(limit || 0));
+  const lotSheet = getSheet("lot");
+  if (!lotSheet) return [];
+  const lotData = lotSheet.getDataRange().getDisplayValues();
+  if (lotData.length < 2) return [];
+
+  const movMap = getAvailableQtyByLots_();
+  const headers = lotData[0];
+  const idxLot = headers.indexOf("lot_id");
+  const idxInv = headers.indexOf("inventory_status");
+  if (idxLot === -1) return [];
+
+  const out = [];
+  for (let i = 1; i < lotData.length; i++) {
+    const lotId = String(lotData[i][idxLot] || "").trim();
+    if (!lotId) continue;
+    const inv = String(idxInv >= 0 ? (lotData[i][idxInv] || "") : "ACTIVE").trim().toUpperCase();
+    if (inv === "VOID") continue;
+    if (Object.prototype.hasOwnProperty.call(movMap, lotId)) continue;
+    out.push(lotId);
+    if (cap > 0 && out.length >= cap) break;
+  }
+  return out;
+}
+
+function getAvailableQtyByLotsFromMovements_() {
   const sheet = getSheet("inventory_movement");
   if (!sheet) return {};
 
@@ -2466,13 +3627,75 @@ function getAvailableQtyByLots_() {
 
   const map = {};
   for (let i = 1; i < data.length; i++) {
-    const lotId = data[i][lotIdx];
+    const lotId = String(data[i][lotIdx] || "").trim();
     if (!lotId) continue;
     const q = Number(data[i][qtyIdx] || 0);
     if (isNaN(q)) continue;
     map[lotId] = (map[lotId] || 0) + q;
   }
   return map;
+}
+
+/** 彙總可用量 map：優先 lot_balance（含快取），未建快照時 fallback movement 全表 */
+function getAvailableQtyByLots_() {
+  if (!isLotBalanceEnabled_()) {
+    return getAvailableQtyByLotsFromMovements_();
+  }
+  try {
+    const cached = CacheService.getScriptCache().get(LOT_BALANCE_CACHE_KEY_);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed && typeof parsed === "object") return parsed;
+    }
+  } catch (_e) {}
+  const map = loadLotBalanceMap_();
+  try {
+    CacheService.getScriptCache().put(LOT_BALANCE_CACHE_KEY_, JSON.stringify(map), LOT_BALANCE_CACHE_SEC_);
+  } catch (_e2) {}
+  return map;
+}
+
+/**
+ * DEV/ADMIN：由 movement 全表重算 lot_balance（部署後首次或修復快照用）
+ */
+function devRebuildLotBalance(p) {
+  const actor = String(p && (p.updated_by || p.created_by) || "").trim();
+  if (!actor) return jsonError("created_by required");
+  const perm = requireErpRole_(actor, ["ADMIN"]);
+  if (perm) return perm;
+
+  const map = getAvailableQtyByLotsFromMovements_();
+  const counts = countMovementsByLotFromMovements_();
+  const sheet = getSheet("lot_balance");
+  const cols = SHEET_SCHEMAS.lot_balance.length;
+  const now = nowIso16();
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    sheet.deleteRows(2, lastRow - 1);
+  }
+
+  const lotIds = Object.keys(map).sort();
+  if (lotIds.length > 0) {
+    const rows = lotIds.map(function (lotId) {
+      return [
+        lotId,
+        String(map[lotId]),
+        String(counts[lotId] || 1),
+        "",
+        now,
+        actor
+      ];
+    });
+    sheet.getRange(2, 1, lotIds.length, cols).setValues(rows);
+  }
+
+  invalidateLotBalanceCache_();
+  writeAuditBundle_("lot_balance", "ALL", "REBUILD_LOT_BALANCE", { rebuilt: lotIds.length }, actor);
+  return jsonSuccess({
+    rebuilt: lotIds.length,
+    balance_source: "lot_balance"
+  });
 }
 
 function parseYMD_(s) {
@@ -2517,7 +3740,7 @@ function createInventoryMovement(p) {
   // 權限：依 user 表 role 判斷（前端不可自帶 user_role）
   const actor = String(p && (p.updated_by || p.created_by) || "").trim();
   const perm = requireErpRole_(actor, ["ADMIN","OP","WH","WAREHOUSE"]);
-  if (perm && perm.success === false) return perm;
+  if (perm) return perm;
 
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
@@ -2542,6 +3765,8 @@ function createInventoryMovementUnlocked_(p) {
   if (!movementType) return jsonError("movement_type required");
   if (!lotId) return jsonError("lot_id required");
   if (!qtyNum || isNaN(qtyNum)) return jsonError("qty required");
+  if (!refType) return jsonError("ref_type required");
+  if (!String(p.ref_id || "").trim()) return jsonError("ref_id required");
 
   // 手動扣庫 / 轉倉：必填欄位（後端硬擋，不只靠 UI）
   // - 手動扣庫：ref_type = INTERNAL_USE/SAMPLE/SCRAP/OTHER（movement_type=OUT）
@@ -2569,16 +3794,20 @@ function createInventoryMovementUnlocked_(p) {
 
   // 用 movements 加總計算「此刻」可用量（用來判斷 CLOSED / VOID）
   const available = getAvailableQtyByLot_(lotId);
-  const desiredBefore = desiredInventoryStatusForLot_(lot, available);
+  const availableNum = (available === null) ? 0 : Number(available);
+  const desiredBefore = desiredInventoryStatusForLot_(lot, availableNum);
 
   // QA gating：出庫類型必須 APPROVED
   const outTypes = ["OUT", "PROCESS_OUT", "SHIP_OUT"];
   if (outTypes.indexOf(movementType) !== -1) {
+    if (available === null) {
+      return jsonError("Lot has no inventory movement records: " + lotId);
+    }
     // 例外：轉倉（TRANSFER）屬於倉內移轉
     // - 全部轉倉：允許 PENDING（視為倉別更正/整批移轉）
     // - 部分轉倉：仍需 APPROVED（避免未放行批次被拆分跨倉流通）
     const isTransfer = refType === "TRANSFER";
-    const isAllTransfer = isTransfer && Math.abs(Number(qtyNum || 0)) >= (available - 1e-9);
+    const isAllTransfer = isTransfer && Math.abs(Number(qtyNum || 0)) >= (availableNum - 1e-9);
     if (!(isTransfer && isAllTransfer) && (lot.status || "") !== "APPROVED") {
       return jsonError("Only APPROVED lot can be used for OUT/PROCESS_OUT/SHIP_OUT");
     }
@@ -2594,7 +3823,7 @@ function createInventoryMovementUnlocked_(p) {
   }
 
   // 不允許負庫存：用 movements 加總判斷
-  const nextAvailable = available + qtyNum;
+  const nextAvailable = availableNum + qtyNum;
   if (nextAvailable < 0) {
     return jsonError("Negative inventory is not allowed");
   }
@@ -2637,6 +3866,16 @@ function createInventoryMovementUnlocked_(p) {
   if (p.updated_at == null || p.updated_at === undefined) p.updated_at = "";
 
   const result = createGeneric("inventory_movement", p, "movement_id");
+  const failMv = bundleStepFail_(result);
+  if (failMv) return failMv;
+
+  try {
+    applyLotBalanceDelta_(lotId, qtyNum, p.movement_id, p.created_by || p.updated_by || "");
+  } catch (e) {
+    try {
+      Logger.log("applyLotBalanceDelta_ failed: " + String(e && e.message ? e.message : e));
+    } catch (_e) {}
+  }
 
   // 寫入 movements 後，重新更新 lot.inventory_status（CLOSED / VOID / ACTIVE）
   const desiredAfter = desiredInventoryStatusForLot_(lot, nextAvailable);
@@ -2861,7 +4100,7 @@ function postGoodsReceiptBundle(p){
     if(!warehouse) return jsonError("warehouse required");
     if(!actor) return jsonError("created_by required");
     const perm = requireErpRole_(actor, ["ADMIN","OP","WH","WAREHOUSE"]);
-    if (perm && perm.success === false) return perm;
+    if (perm) return perm;
     const expectedItems = Number(p.expected_existed_goods_receipt_item_count || 0);
     if(isNaN(expectedItems)) return jsonError("expected_existed_goods_receipt_item_count invalid");
 
@@ -2991,7 +4230,8 @@ function postGoodsReceiptBundle(p){
     if(!idem.ok) return jsonErrorCode("ERR_DUPLICATE_REQUEST", "Duplicate request detected. Please reload and try again");
 
     // 全部驗證通過後才建立收貨單（固定 POSTED）
-    createGeneric("goods_receipt", {
+    var _failGrHdr = bundleStepFail_(createGeneric("goods_receipt", {
+      _system_write: "1",
       gr_id: grId,
       po_id: poId,
       transaction_id: txId,
@@ -3005,7 +4245,8 @@ function postGoodsReceiptBundle(p){
       created_at: p.created_at || nowIso16(),
       updated_by: "",
       updated_at: ""
-    }, "gr_id");
+    }, "gr_id"));
+    if(_failGrHdr) return _failGrHdr;
 
     let created = 0;
     for(let i=0;i<lines.length;i++){
@@ -3036,7 +4277,7 @@ function postGoodsReceiptBundle(p){
       if(mfg && exp && exp < mfg) return jsonError("expiry_date cannot be earlier than manufacture_date (lines[" + i + "])");
 
       // lot
-      createGeneric("lot", {
+      var _failGrLot = bundleStepFail_(createGeneric("lot", {
         lot_id: lotId,
         product_id: productId,
         warehouse_id: warehouse || "MAIN",
@@ -3056,7 +4297,8 @@ function postGoodsReceiptBundle(p){
         updated_by: "",
         updated_at: "",
         system_remark: "PO:" + poId + " / ITEM:" + poItemId
-      }, "lot_id");
+      }, "lot_id"));
+      if(_failGrLot) return _failGrLot;
 
       // movement IN
       const mvRes = createInventoryMovementUnlocked_({
@@ -3080,10 +4322,12 @@ function postGoodsReceiptBundle(p){
         updated_at: "",
         system_remark: "PO IN: " + poId
       });
-      if(mvRes && mvRes.success === false) return mvRes;
+      var _failGrMv = bundleStepFail_(mvRes);
+      if(_failGrMv) return _failGrMv;
 
       // receipt item
-      createGeneric("goods_receipt_item", {
+      var _failGrItem = bundleStepFail_(createGeneric("goods_receipt_item", {
+        _system_write: "1",
         gr_item_id: "GRI-" + grId + "-" + String(created + 1).padStart(3, "0"),
         gr_id: grId,
         po_id: poId,
@@ -3100,29 +4344,33 @@ function postGoodsReceiptBundle(p){
         created_at: nowIso16(),
         updated_by: "",
         updated_at: ""
-      }, "gr_item_id");
+      }, "gr_item_id"));
+      if(_failGrItem) return _failGrItem;
 
       // 回寫 PO item received_qty
-      updateGeneric("purchase_order_item", {
+      var _failGrPoi = bundleStepFail_(updateGeneric("purchase_order_item", {
         po_item_id: poItemId,
         received_qty: String(received + qty),
         updated_by: actor,
         updated_at: nowIso16()
-      }, "po_item_id");
+      }, "po_item_id"));
+      if(_failGrPoi) return _failGrPoi;
       created++;
     }
 
     // PO 狀態：依明細收貨量判斷 OPEN / PARTIAL / CLOSED（允許分批收貨）
     if (created > 0) {
       const nextPoStatus = calcPurchaseOrderStatusByItems_(poId);
-      updateGeneric("purchase_order", {
+      var _failGrPo = bundleStepFail_(updateGeneric("purchase_order", {
         po_id: poId,
         status: nextPoStatus,
         updated_by: actor,
         updated_at: nowIso16()
-      }, "po_id");
+      }, "po_id"));
+      if(_failGrPo) return _failGrPo;
     }
 
+    writeAuditBundle_("goods_receipt", grId, "POST_GOODS_RECEIPT", { gr_id: grId, created_lots: created }, actor);
     return jsonSuccess({ message: "POSTED", gr_id: grId, created_lots: created });
   }finally{
     lock.releaseLock();
@@ -3149,7 +4397,7 @@ function cancelGoodsReceiptBundle(p){
     const actor = String(p && (p.updated_by || p.created_by) || "").trim();
     if(!actor) return jsonError("updated_by required");
     const perm = requireErpRole_(actor, ["ADMIN","OP","WH","WAREHOUSE"]);
-    if (perm && perm.success === false) return perm;
+    if (perm) return perm;
 
     const gr = getOne("goods_receipt", "gr_id", grId);
     if(!gr) return jsonError("Goods receipt not found: " + grId);
@@ -3229,10 +4477,8 @@ function cancelGoodsReceiptBundle(p){
       })();
       if(!inMv) return jsonError("IN movement not found for lot " + lotId);
       const inQty = Math.abs(Number(inMv.qty || 0));
-      const available = getAvailableQtyByLot_(lotId);
-      if(available + 1e-9 < inQty){
-        return jsonError("Lot available qty insufficient for cancel: " + lotId);
-      }
+      const failGrCancelAvail = assertLotMovementQty_(lotId, inQty, "Cancel goods receipt");
+      if(failGrCancelAvail) return failGrCancelAvail;
       plan.push({ it, inMv, lotId, inQty });
     }
 
@@ -3243,7 +4489,7 @@ function cancelGoodsReceiptBundle(p){
     for(let i=0;i<plan.length;i++){
       const x = plan[i];
       const inMv = x.inMv;
-      createInventoryMovementUnlocked_({
+      var _failCgrMv = bundleStepFail_(createInventoryMovementUnlocked_({
         movement_id: buildId_("MV"),
         movement_type: "ADJUST",
         lot_id: x.lotId,
@@ -3263,17 +4509,19 @@ function cancelGoodsReceiptBundle(p){
         updated_by: "",
         updated_at: "",
         system_remark: "REVERSAL(IN) of " + String(inMv.movement_id || "") + voidTag
-      });
+      }));
+      if(_failCgrMv) return _failCgrMv;
     }
 
     for(let i=0;i<plan.length;i++){
-      updateGeneric("lot", {
+      var _failCgrLot = bundleStepFail_(updateGeneric("lot", {
         lot_id: plan[i].lotId,
         inventory_status: "VOID",
         status: "REJECTED",
         updated_by: actor,
         updated_at: nowIso16()
-      }, "lot_id");
+      }, "lot_id"));
+      if(_failCgrLot) return _failCgrLot;
     }
 
     // 回退 PO item 已收
@@ -3285,18 +4533,19 @@ function cancelGoodsReceiptBundle(p){
       if(!poi) continue;
       const dec = Number(it.received_qty || 0);
       const next = Math.max(0, Number(poi.received_qty || 0) - dec);
-      updateGeneric("purchase_order_item", {
+      var _failCgrPoi = bundleStepFail_(updateGeneric("purchase_order_item", {
         po_item_id: poItemId,
         received_qty: String(next),
         updated_by: actor,
         updated_at: nowIso16()
-      }, "po_item_id");
+      }, "po_item_id"));
+      if(_failCgrPoi) return _failCgrPoi;
     }
 
     // goods_receipt status + remark
     const prevRemark = String(gr.remark || "").trim();
     const nextRemark = voidLine ? (prevRemark ? (prevRemark + "\n[作廢 " + nowIso16() + "] " + voidLine) : ("[作廢 " + nowIso16() + "] " + voidLine)) : prevRemark;
-    updateGeneric("goods_receipt", {
+    var _failCgrHdr = bundleStepFail_(updateGeneric("goods_receipt", {
       gr_id: grId,
       transaction_id: txId,
       parent_ref_type: String(gr.po_id || "") ? "PO" : "",
@@ -3306,7 +4555,8 @@ function cancelGoodsReceiptBundle(p){
       updated_by: actor,
       updated_at: nowIso16(),
       _system_write: "1"
-    }, "gr_id");
+    }, "gr_id"));
+    if(_failCgrHdr) return _failCgrHdr;
 
     // PO status：若仍有未作廢收貨單 → CLOSED；否則 OPEN（除非 PO 已取消）
     try{
@@ -3327,15 +4577,17 @@ function cancelGoodsReceiptBundle(p){
         }
         // 作廢收貨後：依明細收貨量判斷 OPEN / PARTIAL / CLOSED（不以是否存在收貨單判斷）
         const nextPoStatus = calcPurchaseOrderStatusByItems_(poId);
-        updateGeneric("purchase_order", {
+        var _failCgrPo = bundleStepFail_(updateGeneric("purchase_order", {
           po_id: poId,
           status: nextPoStatus,
           updated_by: actor,
           updated_at: nowIso16()
-        }, "po_id");
+        }, "po_id"));
+        if(_failCgrPo) return _failCgrPo;
       }
     }catch(_e){}
 
+    writeAuditBundle_("goods_receipt", grId, "CANCEL_GOODS_RECEIPT", { gr_id: grId }, actor);
     return jsonSuccess({ message: "CANCELLED", gr_id: grId });
   }finally{
     lock.releaseLock();
@@ -3450,7 +4702,7 @@ function createProcessOrderCmd(p){
     const actor = String(p && (p.created_by || p.updated_by) || "").trim();
     if(!actor) return jsonError("created_by required");
     const perm = requireErpRole_(actor, ["ADMIN","OP","WH","WAREHOUSE"]);
-    if (perm && perm.success === false) return perm;
+    if (perm) return perm;
 
     const existed = getOne("process_order","process_order_id",id);
     if(existed) return jsonError("Process order already exists");
@@ -3467,7 +4719,7 @@ function createProcessOrderCmd(p){
     const parentRefType = String(p && p.parent_ref_type || "").trim().toUpperCase();
     const parentRefId = String(p && p.parent_ref_id || "").trim().toUpperCase();
 
-    createGeneric("process_order", {
+    var _failProcCreate = bundleStepFail_(createGeneric("process_order", {
       process_order_id: id,
       process_type: processType,
       source_type: sourceType,
@@ -3482,7 +4734,8 @@ function createProcessOrderCmd(p){
       created_at: p.created_at || nowIso16(),
       updated_by: "",
       updated_at: ""
-    }, "process_order_id");
+    }, "process_order_id"));
+    if (_failProcCreate) return _failProcCreate;
     return jsonSuccess({ message:"Created", process_order_id: id });
   }finally{
     lock.releaseLock();
@@ -3503,7 +4756,7 @@ function updateProcessOrderHeaderCmd(p){
     const actor = String(p && (p.updated_by || p.created_by) || "").trim();
     if(!actor) return jsonError("updated_by required");
     const perm = requireErpRole_(actor, ["ADMIN","OP","WH","WAREHOUSE"]);
-    if (perm && perm.success === false) return perm;
+    if (perm) return perm;
 
     const po = getOne("process_order","process_order_id",id);
     if(!po) return jsonError("Process order not found");
@@ -3511,13 +4764,14 @@ function updateProcessOrderHeaderCmd(p){
     if(st === "CANCELLED") return jsonError("Process order is CANCELLED");
     if(st === "POSTED") return jsonError("Process order already POSTED");
 
-    updateGeneric("process_order", {
+    var _failHdr = bundleStepFail_(updateGeneric("process_order", {
       process_order_id: id,
       planned_date: String(p && p.planned_date || ""),
       remark: String(p && p.remark || ""),
       updated_by: actor,
       updated_at: p.updated_at || nowIso16()
-    }, "process_order_id");
+    }, "process_order_id"));
+    if (_failHdr) return _failHdr;
     return jsonSuccess({ message:"Updated", process_order_id: id });
   }finally{
     lock.releaseLock();
@@ -3537,7 +4791,7 @@ function updateProcessOrderInputRemark(p){
     const actor = String(p && (p.updated_by || p.created_by) || "").trim();
     if(!actor) return jsonError("updated_by required");
     const perm = requireErpRole_(actor, ["ADMIN","OP","WH","WAREHOUSE"]);
-    if (perm && perm.success === false) return perm;
+    if (perm) return perm;
 
     const row = getOne("process_order_input","process_input_id",id);
     if(!row) return jsonError("Process input not found");
@@ -3571,7 +4825,7 @@ function updateProcessOrderOutputRemark(p){
     const actor = String(p && (p.updated_by || p.created_by) || "").trim();
     if(!actor) return jsonError("updated_by required");
     const perm = requireErpRole_(actor, ["ADMIN","OP","WH","WAREHOUSE"]);
-    if (perm && perm.success === false) return perm;
+    if (perm) return perm;
 
     const row = getOne("process_order_output","process_output_id",id);
     if(!row) return jsonError("Process output not found");
@@ -3651,7 +4905,7 @@ function issueProcessOrderBundle(p) {
     const actor = String(p.created_by || p.updated_by || "").trim();
     if (!actor) return jsonError("created_by required");
     const perm = requireErpRole_(actor, ["ADMIN","OP","WH","WAREHOUSE"]);
-    if (perm && perm.success === false) return perm;
+    if (perm) return perm;
 
     const po = getOne("process_order", "process_order_id", processOrderId);
     if (!po) return jsonError("Process order not found");
@@ -3695,7 +4949,7 @@ function issueProcessOrderBundle(p) {
       const inputId = "PIN-" + processOrderId + "-" + String(seq).padStart(3, "0");
 
       // 1) process_order_input
-      createGeneric("process_order_input", {
+      var pinRes = createGeneric("process_order_input", {
         process_input_id: inputId,
         process_order_id: processOrderId,
         lot_id: lotId,
@@ -3711,6 +4965,8 @@ function issueProcessOrderBundle(p) {
         updated_by: "",
         updated_at: ""
       }, "process_input_id");
+      var _failPin = bundleStepFail_(pinRes);
+      if (_failPin) return _failPin;
 
       // 2) movement PROCESS_OUT（負數）
       const mvRes = createInventoryMovementUnlocked_({
@@ -3732,17 +4988,20 @@ function issueProcessOrderBundle(p) {
         updated_at: "",
         system_remark: "Process OUT: " + processOrderId + " (" + inputId + ")"
       });
-      if (mvRes && mvRes.success === false) return mvRes;
+      var _failProcOut = bundleStepFail_(mvRes);
+      if (_failProcOut) return _failProcOut;
     }
 
     // status：送加工後維持 OPEN（待回收）
-    updateGeneric("process_order", {
+    var _failProcSt = bundleStepFail_(updateGeneric("process_order", {
       process_order_id: processOrderId,
       status: "OPEN",
       updated_by: actor,
       updated_at: nowIso16()
-    }, "process_order_id");
+    }, "process_order_id"));
+    if(_failProcSt) return _failProcSt;
 
+    writeAuditBundle_("process_order", processOrderId, "ISSUE_PROCESS_ORDER", { process_order_id: processOrderId }, actor);
     return jsonSuccess({ message: "ISSUED", process_order_id: processOrderId });
   } finally {
     lock.releaseLock();
@@ -3772,7 +5031,7 @@ function receiveProcessOutputBundle(p) {
     const actor = String(p.created_by || p.updated_by || "").trim();
     if (!actor) return jsonError("created_by required");
     const perm = requireErpRole_(actor, ["ADMIN","OP","WH","WAREHOUSE"]);
-    if (perm && perm.success === false) return perm;
+    if (perm) return perm;
 
     const po = getOne("process_order", "process_order_id", processOrderId);
     if (!po) return jsonError("Process order not found");
@@ -3836,7 +5095,7 @@ function receiveProcessOutputBundle(p) {
       const outputId = "POUT-" + processOrderId + "-" + String(outSeq).padStart(3, "0");
 
       // 1) lot（來源 PROCESS）
-      createGeneric("lot", {
+      var _failProcLot = bundleStepFail_(createGeneric("lot", {
         lot_id: outLotId,
         product_id: productId,
         warehouse_id: whId,
@@ -3856,7 +5115,8 @@ function receiveProcessOutputBundle(p) {
         updated_by: "",
         updated_at: "",
         system_remark: "Process IN lot from " + processOrderId
-      }, "lot_id");
+      }, "lot_id"));
+      if(_failProcLot) return _failProcLot;
 
       // 2) movement PROCESS_IN（正數）
       const mvRes = createInventoryMovementUnlocked_({
@@ -3879,10 +5139,11 @@ function receiveProcessOutputBundle(p) {
         updated_at: "",
         system_remark: "Process IN: " + processOrderId
       });
-      if (mvRes && mvRes.success === false) return mvRes;
+      var _failProcIn = bundleStepFail_(mvRes);
+      if (_failProcIn) return _failProcIn;
 
       // 3) process_order_output
-      createGeneric("process_order_output", {
+      var _failProcOutRow = bundleStepFail_(createGeneric("process_order_output", {
         process_output_id: outputId,
         process_order_id: processOrderId,
         lot_id: outLotId,
@@ -3900,14 +5161,15 @@ function receiveProcessOutputBundle(p) {
         created_at: nowIso16(),
         updated_by: "",
         updated_at: ""
-      }, "process_output_id");
+      }, "process_output_id"));
+      if(_failProcOutRow) return _failProcOutRow;
 
       // 4) lot_relation(INPUT)：每個產出 lot 關聯所有投料 lot（與前端一致）
       for (let k = 0; k < inputs.length; k++) {
         const it = inputs[k] || {};
         const relId =
           "REL-" + processOrderId + "-" + String(outSeq).padStart(3, "0") + "-" + String(k + 1).padStart(3, "0");
-        createGeneric("lot_relation", {
+        var _failProcRel = bundleStepFail_(createGeneric("lot_relation", {
           relation_id: relId,
           relation_type: "INPUT",
           from_lot_id: String(it.lot_id || ""),
@@ -3923,19 +5185,22 @@ function receiveProcessOutputBundle(p) {
           created_at: nowIso16(),
           updated_by: "",
           updated_at: ""
-        }, "relation_id");
+        }, "relation_id"));
+        if(_failProcRel) return _failProcRel;
       }
 
       createdLots.push(outLotId);
     }
 
-    updateGeneric("process_order", {
+    var _failProcNext = bundleStepFail_(updateGeneric("process_order", {
       process_order_id: processOrderId,
       status: nextStatus,
       updated_by: actor,
       updated_at: nowIso16()
-    }, "process_order_id");
+    }, "process_order_id"));
+    if(_failProcNext) return _failProcNext;
 
+    writeAuditBundle_("process_order", processOrderId, "RECEIVE_PROCESS_OUTPUT", { process_order_id: processOrderId, created_lots: createdLots }, actor);
     return jsonSuccess({ message: "RECEIVED", process_order_id: processOrderId, created_lots: createdLots });
   } finally {
     lock.releaseLock();
@@ -4014,7 +5279,7 @@ function retractProcessIssueBundle(p) {
     const actor = String(p.updated_by || p.created_by || "").trim();
     if (!actor) return jsonError("updated_by required");
     const perm = requireErpRole_(actor, ["ADMIN","OP","WH","WAREHOUSE"]);
-    if (perm && perm.success === false) return perm;
+    if (perm) return perm;
 
     const po = getOne("process_order", "process_order_id", procId);
     if (!po) return jsonError("Process order not found");
@@ -4097,21 +5362,25 @@ function retractProcessIssueBundle(p) {
         updated_at: "",
         system_remark: "REVERSAL(PROCESS_OUT) of " + (m.movement_id || "") + " (" + procId + ")"
       });
-      if (mvRes && mvRes.success === false) return mvRes;
+      var _failRetractMv = bundleStepFail_(mvRes);
+      if (_failRetractMv) return _failRetractMv;
     }
 
     // 刪除 inputs
     for (let i = 0; i < inputs.length; i++) {
-      deleteGeneric("process_order_input", { process_input_id: inputs[i].process_input_id }, "process_input_id");
+      var _failDel = bundleStepFail_(deleteGeneric("process_order_input", { process_input_id: inputs[i].process_input_id }, "process_input_id"));
+      if(_failDel) return _failDel;
     }
 
-    updateGeneric("process_order", {
+    var _failRetractSt = bundleStepFail_(updateGeneric("process_order", {
       process_order_id: procId,
       status: "OPEN",
       updated_by: actor,
       updated_at: nowIso16()
-    }, "process_order_id");
+    }, "process_order_id"));
+    if(_failRetractSt) return _failRetractSt;
 
+    writeAuditBundle_("process_order", procId, "RETRACT_PROCESS_ISSUE", { process_order_id: procId }, actor);
     return jsonSuccess({ message: "RETRACTED", process_order_id: procId });
   } finally {
     lock.releaseLock();
@@ -4135,7 +5404,7 @@ function voidProcessOutputBundle(p) {
     const actor = String(p.updated_by || p.created_by || "").trim();
     if (!actor) return jsonError("updated_by required");
     const perm = requireErpRole_(actor, ["ADMIN","OP","WH","WAREHOUSE"]);
-    if (perm && perm.success === false) return perm;
+    if (perm) return perm;
 
     const po = getOne("process_order", "process_order_id", procId);
     if (!po) return jsonError("Process order not found");
@@ -4203,35 +5472,40 @@ function voidProcessOutputBundle(p) {
       updated_at: "",
       system_remark: "REVERSAL(PROCESS_IN) of " + outId + " (" + procId + ")"
     });
-    if (mvRes && mvRes.success === false) return mvRes;
+    var _failVoidMv = bundleStepFail_(mvRes);
+    if (_failVoidMv) return _failVoidMv;
 
-    updateGeneric("process_order_output", {
+    var _failVoidOut = bundleStepFail_(updateGeneric("process_order_output", {
       _system_write: "1",
       process_output_id: outId,
       status: "CANCELLED",
       system_remark: appendSystemRemark_(out.system_remark, "回收已作廢 " + nowIso16() + " " + actor),
       updated_by: actor,
       updated_at: nowIso16()
-    }, "process_output_id");
+    }, "process_output_id"));
+    if(_failVoidOut) return _failVoidOut;
 
-    updateGeneric("lot", {
+    var _failVoidLot = bundleStepFail_(updateGeneric("lot", {
       _system_write: "1",
       lot_id: lotId,
       inventory_status: "VOID",
       updated_by: actor,
       updated_at: nowIso16(),
       system_remark: appendSystemRemark_(lot.system_remark, "回收作廢 " + nowIso16() + " " + actor)
-    }, "lot_id");
+    }, "lot_id"));
+    if(_failVoidLot) return _failVoidLot;
 
     // 回寫加工單狀態：簡化版（若仍有任何未作廢回收則 OPEN；否則 OPEN）
     // 交由前端現有邏輯或後續 bundle 再補更完整的 unit 換算判斷
-    updateGeneric("process_order", {
+    var _failVoidPo = bundleStepFail_(updateGeneric("process_order", {
       process_order_id: procId,
       status: "OPEN",
       updated_by: actor,
       updated_at: nowIso16()
-    }, "process_order_id");
+    }, "process_order_id"));
+    if(_failVoidPo) return _failVoidPo;
 
+    writeAuditBundle_("process_order", procId, "VOID_PROCESS_OUTPUT", { process_order_id: procId, process_output_id: outId }, actor);
     return jsonSuccess({ message: "VOIDED", process_order_id: procId, process_output_id: outId });
   } finally {
     lock.releaseLock();
@@ -4253,7 +5527,7 @@ function cancelProcessOrderBundle(p) {
     const actor = String(p.updated_by || p.created_by || "").trim();
     if (!actor) return jsonError("updated_by required");
     const perm = requireErpRole_(actor, ["ADMIN","OP","WH","WAREHOUSE"]);
-    if (perm && perm.success === false) return perm;
+    if (perm) return perm;
 
     const po = getOne("process_order", "process_order_id", procId);
     if (!po) return jsonError("Process order not found");
@@ -4311,10 +5585,11 @@ function cancelProcessOrderBundle(p) {
         updated_at: "",
         system_remark: "REVERSAL(" + (m.movement_type || "") + ") of " + (m.movement_id || "") + " (" + procId + ")"
       });
-      if (mvRes && mvRes.success === false) return mvRes;
+      var _failCancelProcMv = bundleStepFail_(mvRes);
+      if (_failCancelProcMv) return _failCancelProcMv;
     }
 
-    updateGeneric("process_order", {
+    var _failCancelProc = bundleStepFail_(updateGeneric("process_order", {
       _system_write: "1",
       process_order_id: procId,
       transaction_id: txId,
@@ -4322,8 +5597,10 @@ function cancelProcessOrderBundle(p) {
       updated_by: actor,
       updated_at: nowIso16(),
       system_remark: appendSystemRemark_(po.system_remark, "已取消並回沖 " + nowIso16() + " " + actor)
-    }, "process_order_id");
+    }, "process_order_id"));
+    if(_failCancelProc) return _failCancelProc;
 
+    writeAuditBundle_("process_order", procId, "CANCEL_PROCESS_ORDER", { process_order_id: procId }, actor);
     return jsonSuccess({ message: "CANCELLED", process_order_id: procId });
   } finally {
     lock.releaseLock();
@@ -4474,22 +5751,14 @@ function traceLotBundle(p){
     }
   }
 
-  // 4) Available qty per lot: sum movements by lot_id for visited lots
-  const mvSheet = getSheet("inventory_movement");
-  const mvData = mvSheet ? mvSheet.getDataRange().getDisplayValues() : [];
-  const mvHeaders = mvData.length ? mvData[0] : [];
-  const idxMvLot = mvHeaders.indexOf("lot_id");
-  const idxQty = mvHeaders.indexOf("qty");
-  if(mvSheet && (idxMvLot === -1 || idxQty === -1)) return jsonError("lot_id/qty columns not found in inventory_movement");
+  // 4) Available qty per lot（優先 lot_balance 快照，否則掃 movement）
   const availMap = {};
-  if(mvData.length >= 2){
-    for(let i=1;i<mvData.length;i++){
-      const row = mvData[i];
-      const lotId = String(row[idxMvLot] || "").trim().toUpperCase();
-      if(!lotId || !visited[lotId]) continue;
-      const qn = Number(row[idxQty] || 0);
-      if(isNaN(qn)) continue;
-      availMap[lotId] = (availMap[lotId] || 0) + qn;
+  const fullAvail = getAvailableQtyByLots_();
+  const visitKeys = Object.keys(visited);
+  for (let vi = 0; vi < visitKeys.length; vi++) {
+    const lotId = visitKeys[vi];
+    if (Object.prototype.hasOwnProperty.call(fullAvail, lotId)) {
+      availMap[lotId] = Number(fullAvail[lotId] || 0);
     }
   }
 
@@ -4650,6 +5919,34 @@ function updateSalesOrder(p) {
       }
     }
   }
+  // Phase 2：已有出貨追溯（shipment_item 指向 so_id）後，禁止修改結構欄位，只允許備註/少數非結構欄位
+  if(!isSystemWrite_(p)){
+    const soId = String(p && p.so_id || "").trim().toUpperCase();
+    const existed = soId ? getOne("sales_order","so_id",soId) : null;
+    if(existed && isTerminalDocStatus_(existed.status)){
+      const bad = enforceOnlyAllowFields_(p, [
+        "so_id",
+        "remark",
+        "system_remark",
+        "updated_by",
+        "updated_at",
+        "transaction_id"
+      ]);
+      if(bad) return jsonError("Sales order is " + normalizeDocStatus_(existed.status) + ". Only remark is allowed (blocked: " + bad + ")");
+    }
+    if(soId && hasAnyShipmentBySoId_(soId)){
+      const bad = enforceOnlyAllowFields_(p, [
+        "so_id",
+        "remark",
+        "system_remark",
+        "updated_by",
+        "updated_at",
+        // 允許 transaction_id 補值（舊資料）
+        "transaction_id"
+      ]);
+      if(bad) return jsonError("Sales order already shipped. Only remark is allowed (blocked: " + bad + ")");
+    }
+  }
   return updateGeneric("sales_order", p, "so_id");
 }
 
@@ -4680,6 +5977,16 @@ function listSalesOrderItemBySo(p) {
 
 function createSalesOrderItem(p) {
   const soId = String(p && p.so_id || "").trim().toUpperCase();
+  // Phase 2：已有出貨追溯後，禁止再新增明細（避免用 API 側門塞新 item）
+  if(!isSystemWrite_(p)){
+    const so = soId ? getOne("sales_order","so_id",soId) : null;
+    if(so && isTerminalDocStatus_(so.status)){
+      return jsonError("Sales order is " + normalizeDocStatus_(so.status) + ". Creating new items is not allowed");
+    }
+    if(soId && hasAnyShipmentBySoId_(soId)){
+      return jsonError("Sales order already shipped. Creating new items is not allowed");
+    }
+  }
   const txId = normalizeTxId_(p && p.transaction_id) || ensureSalesOrderTx_(soId, String(p && (p.created_by || p.updated_by) || "")) || buildTxId_();
   const parentRefType = String(p && p.parent_ref_type || "SO").trim().toUpperCase();
   const parentRefId = String(p && p.parent_ref_id || soId).trim().toUpperCase();
@@ -4691,6 +5998,37 @@ function createSalesOrderItem(p) {
 }
 
 function updateSalesOrderItem(p) {
+  // Phase 2：已出貨（shipped_qty>0 或 shipment_item 已存在）後，禁止改品項/數量/單價，只允許備註
+  if(!isSystemWrite_(p)){
+    const itemId = String(p && p.so_item_id || "").trim();
+    if(itemId){
+      const existed = getOne("sales_order_item","so_item_id",itemId);
+      const soId = String((existed && existed.so_id) || (p && p.so_id) || "").trim().toUpperCase();
+      const so = soId ? getOne("sales_order","so_id",soId) : null;
+      if(so && isTerminalDocStatus_(so.status)){
+        const bad = enforceOnlyAllowFields_(p, [
+          "so_item_id",
+          "remark",
+          "system_remark",
+          "updated_by",
+          "updated_at"
+        ]);
+        if(bad) return jsonError("Sales order is " + normalizeDocStatus_(so.status) + ". Only remark is allowed (blocked: " + bad + ")");
+      }
+      const shipped = Number(existed && existed.shipped_qty || 0);
+      const hasShip = soId ? hasAnyShipmentBySoId_(soId) : false;
+      if((shipped > 0) || hasShip){
+        const bad = enforceOnlyAllowFields_(p, [
+          "so_item_id",
+          "remark",
+          "system_remark",
+          "updated_by",
+          "updated_at"
+        ]);
+        if(bad) return jsonError("Sales order item already shipped. Only remark is allowed (blocked: " + bad + ")");
+      }
+    }
+  }
   return updateGeneric("sales_order_item", p, "so_item_id");
 }
 
@@ -4717,7 +6055,7 @@ function resetSalesOrderItemsCmd(p) {
     const actor = String(p && (p.updated_by || p.created_by) || "").trim();
     if (!actor) return jsonError("updated_by required");
     const perm = requireErpRole_(actor, ["ADMIN","OP","WH","WAREHOUSE","SL","SALES"]);
-    if (perm && perm.success === false) return perm;
+    if (perm) return perm;
 
     // 防破壞追溯：若已出貨，禁止重建明細
     const shItemSheet = getSheet("shipment_item");
@@ -4988,7 +6326,7 @@ function updateShipmentItemRemark(p){
   if(!id) return jsonError("shipment_item_id required");
   if(!actor) return jsonError("updated_by required");
   const perm = requireErpRole_(actor, ["ADMIN","OP","WH","WAREHOUSE"]);
-  if (perm && perm.success === false) return perm;
+  if (perm) return perm;
 
   const sheet = getSheet("shipment_item");
   if(!sheet) return jsonError("Sheet not found: shipment_item");
@@ -5028,6 +6366,7 @@ function updateShipmentItemRemark(p){
   return jsonError("Record not found");
 }
 
+// #SEC:SHIPMENT
 /**
  * Command：更新出貨主檔備註（不變更狀態／日期／客戶等；稽核用途）
  * params: shipment_id, remark, updated_by, updated_at(optional)
@@ -5039,7 +6378,7 @@ function updateShipmentRemark(p){
   if(!id) return jsonError("shipment_id required");
   if(!actor) return jsonError("updated_by required");
   const perm = requireErpRole_(actor, ["ADMIN","OP","WH","WAREHOUSE"]);
-  if (perm && perm.success === false) return perm;
+  if (perm) return perm;
 
   const sh0 = getShipmentById_(id);
   if(!sh0) return jsonError("Shipment not found: " + id);
@@ -5104,7 +6443,7 @@ function postShipmentBundle(p) {
     const actor = String(p.created_by || p.updated_by || "").trim();
     if (!actor) return jsonError("created_by required");
     const perm = requireErpRole_(actor, ["ADMIN","OP","WH","WAREHOUSE"]);
-    if (perm && perm.success === false) return perm;
+    if (perm) return perm;
     const expectedItems = Number(p.expected_existed_shipment_item_count || 0);
     if (isNaN(expectedItems)) return jsonError("expected_existed_shipment_item_count invalid");
 
@@ -5166,7 +6505,8 @@ function postShipmentBundle(p) {
     if(!idem.ok) return jsonError("Duplicate request detected. Please reload and try again");
 
     // 先建立 shipment（固定 POSTED）
-    createGeneric("shipment", {
+    var _failSh = bundleStepFail_(createGeneric("shipment", {
+      _system_write: "1",
       shipment_id: shipmentId,
       so_id: soId,
       customer_id: customerId,
@@ -5181,7 +6521,8 @@ function postShipmentBundle(p) {
       created_at: p.created_at || nowIso16(),
       updated_by: "",
       updated_at: ""
-    }, "shipment_id");
+    }, "shipment_id"));
+    if (_failSh) return _failSh;
 
     // 同一張出貨單可能多筆共用同一 so_item_id（FEFO 拆行）→ 先在記憶體累加，再一次次更新
     const shippedDeltaBySoItem = {};
@@ -5209,7 +6550,8 @@ function postShipmentBundle(p) {
       const productId = String(it.product_id || lot.product_id || "").trim();
 
       // 1) shipment_item
-      createGeneric("shipment_item", {
+      var _failSi = bundleStepFail_(createGeneric("shipment_item", {
+        _system_write: "1",
         shipment_item_id: "SHI-" + shipmentId + "-" + String(i + 1).padStart(3, "0"),
         shipment_id: shipmentId,
         so_id: itemSoId,
@@ -5226,7 +6568,8 @@ function postShipmentBundle(p) {
         created_at: nowIso16(),
         updated_by: "",
         updated_at: ""
-      }, "shipment_item_id");
+      }, "shipment_item_id"));
+      if (_failSi) return _failSi;
 
       // 2) movement: SHIP_OUT（負數）
       const mvRes = createInventoryMovementUnlocked_({
@@ -5250,7 +6593,8 @@ function postShipmentBundle(p) {
         updated_at: "",
         system_remark: "Ship OUT: " + shipmentId
       });
-      if (mvRes && mvRes.success === false) return mvRes;
+      var _failMv = bundleStepFail_(mvRes);
+      if (_failMv) return _failMv;
 
       // 3) 累加 SO shipped_qty（若有 so_item_id）
       if (soItemId) {
@@ -5265,12 +6609,13 @@ function postShipmentBundle(p) {
       const row = getSalesOrderItemById_(soItemId);
       if (!row) continue;
       const next = Number(row.shipped_qty || 0) + Number(shippedDeltaBySoItem[soItemId] || 0);
-      updateGeneric("sales_order_item", {
+      var _failSoi = bundleStepFail_(updateGeneric("sales_order_item", {
         so_item_id: soItemId,
         shipped_qty: String(next),
         updated_by: actor,
         updated_at: nowIso16()
-      }, "so_item_id");
+      }, "so_item_id"));
+      if (_failSoi) return _failSoi;
     }
 
     // 回寫 sales_order.status（只處理 touched 的 so_id）
@@ -5285,14 +6630,16 @@ function postShipmentBundle(p) {
         return Number(x.shipped_qty || 0) > 0;
       });
       const nextStatus = allShipped ? "SHIPPED" : (anyShipped ? "PARTIAL" : "OPEN");
-      updateGeneric("sales_order", {
+      var _failSo = bundleStepFail_(updateGeneric("sales_order", {
         so_id: sid,
         status: nextStatus,
         updated_by: actor,
         updated_at: nowIso16()
-      }, "so_id");
+      }, "so_id"));
+      if (_failSo) return _failSo;
     }
 
+    writeAuditBundle_("shipment", shipmentId, "POST_SHIPMENT", { shipment_id: shipmentId, so_id: soId, item_count: items.length }, actor);
     return jsonSuccess({ message: "POSTED", shipment_id: shipmentId });
   } finally {
     lock.releaseLock();
@@ -5314,7 +6661,7 @@ function cancelShipmentBundle(p) {
     const actor = String(p.updated_by || p.created_by || "").trim();
     if (!actor) return jsonError("updated_by required");
     const perm = requireErpRole_(actor, ["ADMIN","OP","WH","WAREHOUSE"]);
-    if (perm && perm.success === false) return perm;
+    if (perm) return perm;
 
     const sh = getShipmentById_(shipmentId);
     if (!sh) return jsonError("Shipment not found");
@@ -5403,7 +6750,8 @@ function cancelShipmentBundle(p) {
         updated_at: "",
         system_remark: "Cancel Shipment: " + shipmentId
       });
-      if (mvRes && mvRes.success === false) return mvRes;
+      var _failCmv = bundleStepFail_(mvRes);
+      if (_failCmv) return _failCmv;
 
       const soItemId = String(it.so_item_id || "").trim();
       const soId = String(it.so_id || "").trim();
@@ -5414,13 +6762,15 @@ function cancelShipmentBundle(p) {
     // 2) shipment.status = CANCELLED（保留原 remark，加上 CANCELLED 註記）
     const prevRemark = String(sh.remark || "").trim();
     const nextRemark = prevRemark ? (prevRemark + " | CANCELLED") : "CANCELLED";
-    updateGeneric("shipment", {
+    var _failCsh = bundleStepFail_(updateGeneric("shipment", {
       shipment_id: shipmentId,
       status: "CANCELLED",
       remark: nextRemark,
       updated_by: actor,
-      updated_at: nowIso16()
-    }, "shipment_id");
+      updated_at: nowIso16(),
+      _system_write: "1"
+    }, "shipment_id"));
+    if (_failCsh) return _failCsh;
 
     // 3) 回寫 sales_order_item.shipped_qty（扣回）
     const soItemIds = Object.keys(shippedDeltaBySoItem);
@@ -5429,12 +6779,13 @@ function cancelShipmentBundle(p) {
       const row = getSalesOrderItemById_(soItemId);
       if (!row) continue;
       const next = Math.max(0, Number(row.shipped_qty || 0) - Number(shippedDeltaBySoItem[soItemId] || 0));
-      updateGeneric("sales_order_item", {
+      var _failCsoi = bundleStepFail_(updateGeneric("sales_order_item", {
         so_item_id: soItemId,
         shipped_qty: String(next),
         updated_by: actor,
         updated_at: nowIso16()
-      }, "so_item_id");
+      }, "so_item_id"));
+      if (_failCsoi) return _failCsoi;
     }
 
     // 4) 回寫 sales_order.status（依 touched 的 so_id）
@@ -5449,14 +6800,16 @@ function cancelShipmentBundle(p) {
         return Number(x.shipped_qty || 0) > 0;
       });
       const nextStatus = allShipped ? "SHIPPED" : (anyShipped ? "PARTIAL" : "OPEN");
-      updateGeneric("sales_order", {
+      var _failCso = bundleStepFail_(updateGeneric("sales_order", {
         so_id: sid,
         status: nextStatus,
         updated_by: actor,
         updated_at: nowIso16()
-      }, "so_id");
+      }, "so_id"));
+      if (_failCso) return _failCso;
     }
 
+    writeAuditBundle_("shipment", shipmentId, "CANCEL_SHIPMENT", { shipment_id: shipmentId }, actor);
     return jsonSuccess({ message: "CANCELLED", shipment_id: shipmentId });
   } finally {
     lock.releaseLock();
@@ -5530,7 +6883,7 @@ function cancelPurchaseOrderBundle(p) {
   const actor = String(p.updated_by || p.created_by || "").trim();
   if (!actor) return jsonError("updated_by required");
   const perm = requireErpRole_(actor, ["ADMIN","OP","WH","WAREHOUSE"]);
-  if (perm && perm.success === false) return perm;
+  if (perm) return perm;
 
   const po = getOne("purchase_order", "po_id", poId);
   if (!po) return jsonError("Purchase order not found");
@@ -5543,14 +6896,15 @@ function cancelPurchaseOrderBundle(p) {
 
   const note = String(p.cancel_note || "").trim();
   const line = "[作廢 " + nowIso16() + " " + actor + "] " + (note || "");
-  updateGeneric("purchase_order", {
+  var _failPo = bundleStepFail_(updateGeneric("purchase_order", {
     _system_write: "1",
     po_id: poId,
     status: "CANCELLED",
     system_remark: appendSystemRemark_(po.system_remark, line.trim()),
     updated_by: actor,
     updated_at: nowIso16()
-  }, "po_id");
+  }, "po_id"));
+  if (_failPo) return _failPo;
 
   return jsonSuccess({ message: "CANCELLED", po_id: poId });
 }
@@ -5561,7 +6915,7 @@ function cancelImportDocumentBundle(p) {
   const actor = String(p.updated_by || p.created_by || "").trim();
   if (!actor) return jsonError("updated_by required");
   const perm = requireErpRole_(actor, ["ADMIN","OP","WH","WAREHOUSE"]);
-  if (perm && perm.success === false) return perm;
+  if (perm) return perm;
 
   const doc = getOne("import_document", "import_doc_id", docId);
   if (!doc) return jsonError("Import document not found");
@@ -5574,14 +6928,15 @@ function cancelImportDocumentBundle(p) {
 
   const note = String(p.cancel_note || "").trim();
   const line = "[作廢 " + nowIso16() + " " + actor + "] " + (note || "");
-  updateGeneric("import_document", {
+  var _failDoc = bundleStepFail_(updateGeneric("import_document", {
     _system_write: "1",
     import_doc_id: docId,
     status: "CANCELLED",
     system_remark: appendSystemRemark_(doc.system_remark, line.trim()),
     updated_by: actor,
     updated_at: nowIso16()
-  }, "import_doc_id");
+  }, "import_doc_id"));
+  if (_failDoc) return _failDoc;
 
   return jsonSuccess({ message: "CANCELLED", import_doc_id: docId });
 }
@@ -5592,7 +6947,7 @@ function cancelSalesOrderBundle(p) {
   const actor = String(p.updated_by || p.created_by || "").trim();
   if (!actor) return jsonError("updated_by required");
   const perm = requireErpRole_(actor, ["ADMIN","OP","WH","WAREHOUSE"]);
-  if (perm && perm.success === false) return perm;
+  if (perm) return perm;
 
   const so = getOne("sales_order", "so_id", soId);
   if (!so) return jsonError("Sales order not found");
@@ -5605,18 +6960,20 @@ function cancelSalesOrderBundle(p) {
 
   const note = String(p.cancel_note || "").trim();
   const line = "[作廢 " + nowIso16() + " " + actor + "] " + (note || "");
-  updateGeneric("sales_order", {
+  var _failSo = bundleStepFail_(updateGeneric("sales_order", {
     _system_write: "1",
     so_id: soId,
     status: "CANCELLED",
     system_remark: appendSystemRemark_(so.system_remark, line.trim()),
     updated_by: actor,
     updated_at: nowIso16()
-  }, "so_id");
+  }, "so_id"));
+  if (_failSo) return _failSo;
 
   return jsonSuccess({ message: "CANCELLED", so_id: soId });
 }
 
+// #SEC:AUTH
 /* =================================================
    USERS
 ================================================= */
@@ -5631,7 +6988,10 @@ function cancelSalesOrderBundle(p) {
 // =================================================
 var ERP_ADMIN_USER_ID_ = "admin";
 var ERP_ADMIN_USER_NAME_ = "ADMIN";
-var ERP_ADMIN_PASSWORD_SHA256_HEX_ = "b52f077a46fa6666fc896d80c7296506ca0870cbe756f9a93e754e1b14698430"; // TODO: 填入 devHashPassword_ 算出的 HEX
+// 安全預設：不在程式碼內放固定 hash；未設定時即停用帳密登入
+// - 可用 Script Properties 設定：ERP_ADMIN_PASSWORD_SHA256_HEX（建議）
+// - 或自行將下方變數改成你的 SHA-256 HEX（不建議在多人可讀環境）
+var ERP_ADMIN_PASSWORD_SHA256_HEX_ = "";
 
 function devHashPassword_(pw){
   var s = String(pw == null ? "" : pw);
@@ -5672,7 +7032,11 @@ function devPrintAdminPwHash(){
 }
 
 function verifyAdminPassword_(plainPw){
-  var want = String(ERP_ADMIN_PASSWORD_SHA256_HEX_ || "").trim().toLowerCase();
+  var want = "";
+  try{
+    want = String(PropertiesService.getScriptProperties().getProperty("ERP_ADMIN_PASSWORD_SHA256_HEX") || "").trim();
+  }catch(_e){ want = ""; }
+  if(!want) want = String(ERP_ADMIN_PASSWORD_SHA256_HEX_ || "").trim();
   if(!want) return false;
   var got = String(devHashPassword_(plainPw) || "").trim().toLowerCase();
   return got === want;
@@ -5906,6 +7270,66 @@ function listLogs() {
   return listGeneric(LOG_SHEET_NAME);
 }
 
+function listLogsRecent(p) {
+  const days = Number(p && p.days);
+  const limit = Number(p && p.limit || 2000);
+  const cap = isNaN(limit) ? 2000 : Math.min(Math.max(limit, 50), 5000);
+  const sheet = getLogSheet();
+  if (!sheet) return jsonSuccess({ data: [] });
+  const data = sheet.getDataRange().getDisplayValues();
+  if (data.length < 2) return jsonSuccess({ data: [] });
+  const headers = data[0];
+  const idxAt = headers.indexOf("created_at");
+  const cutoff = logsCutoffIso16_(isNaN(days) ? 90 : days);
+
+  const out = [];
+  for (let i = data.length - 1; i >= 1; i--) {
+    if (out.length >= cap) break;
+    const row = data[i];
+    if (idxAt >= 0) {
+      const t = normalizeLogIso16_(row[idxAt]);
+      if (t && t < cutoff) continue;
+    }
+    out.push(rowToObject(headers, row));
+  }
+  return jsonSuccess({ data: out });
+}
+
+function listLogsByRef(p) {
+  const tableName = String(p && p.table_name || "").trim();
+  const referenceId = String(p && p.reference_id || "").trim();
+  if (!referenceId) return jsonError("reference_id required");
+  const days = Number(p && p.days);
+  const limit = Number(p && p.limit || 500);
+  const cap = isNaN(limit) ? 500 : Math.min(Math.max(limit, 10), 2000);
+  const sheet = getLogSheet();
+  if (!sheet) return jsonSuccess({ data: [] });
+  const data = sheet.getDataRange().getDisplayValues();
+  if (data.length < 2) return jsonSuccess({ data: [] });
+  const headers = data[0];
+  const idxTable = headers.indexOf("table_name");
+  const idxRef = headers.indexOf("reference_id");
+  const idxAt = headers.indexOf("created_at");
+  if (idxRef === -1) return jsonError("reference_id column not found in logs");
+  const cutoff = logsCutoffIso16_(isNaN(days) ? 3650 : days);
+  const refLower = referenceId.toLowerCase();
+
+  const out = [];
+  for (let i = data.length - 1; i >= 1; i--) {
+    if (out.length >= cap) break;
+    const row = data[i];
+    const rid = String(row[idxRef] || "").trim();
+    if (!rid || rid.toLowerCase().indexOf(refLower) === -1) continue;
+    if (tableName && idxTable >= 0 && String(row[idxTable] || "").trim() !== tableName) continue;
+    if (idxAt >= 0) {
+      const t = normalizeLogIso16_(row[idxAt]);
+      if (t && t < cutoff) continue;
+    }
+    out.push(rowToObject(headers, row));
+  }
+  return jsonSuccess({ data: out });
+}
+
 /** 由 user 表查詢角色（找不到或非 ACTIVE 視為空） */
 function getUserRoleById_(userId) {
   const id = String(userId || "").trim();
@@ -5956,7 +7380,7 @@ function getUserAllowedModulesById_(userId) {
 function actionToModuleKey_(action){
   const a = String(action || "").trim().toLowerCase();
   if(!a) return "";
-  if(a === "list_logs" || a.indexOf("fix_logs_") === 0) return "logs";
+  if(a === "list_logs" || a === "list_logs_recent" || a === "list_logs_by_ref" || a.indexOf("fix_logs_") === 0) return "logs";
   if(a.indexOf("_product") !== -1) return "products";
   if(a.indexOf("_supplier") !== -1) return "suppliers";
   if(a.indexOf("_customer") !== -1) return "customers";
@@ -6224,6 +7648,7 @@ function requireErpRole_(actorId, allowedRoles) {
   return null;
 }
 
+// #SEC:DEV
 /**
  * 開發測試用：一鍵清空「非主檔」工作表資料（保留第 1 列標題，僅清除資料列）
  * 主檔保留：product, supplier, customer, warehouse, user
@@ -6428,39 +7853,43 @@ function devSeedSmokeFixtures(p){
     lot_id: lotId,
     product_id: productId,
     warehouse_id: warehouseId,
+    source_type: "ADJUST",
+    source_id: tag,
+    qty: "10",
     unit: "EA",
+    type: "RM",
     manufacture_date: now.slice(0,10),
     expiry_date: "2099-12-31",
     inventory_status: "ACTIVE",
-    inspection_status: "APPROVED",
     remark: "[SMOKE] " + tag,
-    system_remark: "",
-    status: "ACTIVE",
+    status: "APPROVED",
+    received_date: now.slice(0,10),
     created_by: actor,
     created_at: now,
     updated_by: "",
     updated_at: ""
   }, "lot_id");
 
-  createGeneric("inventory_movement", {
+  var _seedMv = createInventoryMovementUnlocked_({
     movement_id: mkId("SMKMV"),
-    movement_date: now,
     movement_type: "IN",
-    purpose: "NORMAL",
-    ref_type: "SMOKE",
-    ref_id: tag,
     lot_id: lotId,
     product_id: productId,
     warehouse_id: warehouseId,
     qty: "10",
     unit: "EA",
+    ref_type: "SMOKE",
+    ref_id: tag,
+    issued_to: "",
     remark: "[SMOKE] seed",
-    system_remark: "",
     created_by: actor,
     created_at: now,
     updated_by: "",
-    updated_at: ""
-  }, "movement_id");
+    updated_at: "",
+    system_remark: "SMOKE seed IN"
+  });
+  var _seedMvFail = bundleStepFail_(_seedMv);
+  if (_seedMvFail) return _seedMvFail;
 
   return jsonSuccess({
     tag: tag,
@@ -6623,6 +8052,28 @@ function rowToObject(headers, row) {
   const obj = {};
   headers.forEach((h, i) => obj[h] = row[i]);
   return obj;
+}
+
+/**
+ * Bundle 內部：將 jsonSuccess/jsonError（TextOutput）或 plain 物件轉成可判斷的結果。
+ */
+function asApiResultObj_(res) {
+  if (!res) return null;
+  if (typeof res === "object" && res.success !== undefined) return res;
+  try {
+    if (typeof res.getContent === "function") {
+      var txt = String(res.getContent() || "");
+      if (txt) return JSON.parse(txt);
+    }
+  } catch (_e) {}
+  return null;
+}
+
+/** Bundle 寫入步驟失敗時回傳原結果（供 bundle return）；成功則回傳 null。 */
+function bundleStepFail_(res) {
+  var o = asApiResultObj_(res);
+  if (o && o.success === false) return res;
+  return null;
 }
 
 function jsonSuccess(obj) {
