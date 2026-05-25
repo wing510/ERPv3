@@ -134,7 +134,7 @@ const SHEET_SCHEMAS = {
   inventory_movement: SCHEMA_FIELDS_([
     "movement_id","movement_type","lot_id","product_id","warehouse_id","transaction_id","parent_ref_type","parent_ref_id","qty","unit","ref_type","ref_id","issued_to","remark","created_by","created_at","updated_by","updated_at","system_remark"
   ]),
-  // 庫存快照（查詢加速；真相仍為 inventory_movement，可 dev_rebuild_lot_balance 重算）
+  // 庫存快照（查詢加速；真相仍為 inventory_movement；PROD 用 admin_rebuild_lot_balance、DEV 可用 dev_rebuild_lot_balance 重算）
   lot_balance: SCHEMA_FIELDS_([
     "lot_id","available_qty","movement_count","last_movement_id","updated_at","updated_by"
   ]),
@@ -564,7 +564,8 @@ const ROUTES = {
   dev_clear_non_master: devClearNonMaster,
   dev_seed_smoke_fixtures: devSeedSmokeFixtures,
   dev_cleanup_smoke_fixtures: devCleanupSmokeFixtures,
-  dev_rebuild_lot_balance: devRebuildLotBalance
+  dev_rebuild_lot_balance: devRebuildLotBalance,
+  admin_rebuild_lot_balance: devRebuildLotBalance
 };
 
 /* =================================================
@@ -1200,10 +1201,7 @@ function postTransferBundle(p){
 ================================================= */
 
 var ERP_ACTION_ROLE_OVERRIDES_ = {
-  // 範例（照抄即可用）：
-  // "create_product": ["GA","ADMIN"],
-  // "delete_product": ["ADMIN"],
-  // "list_user": ["CEO","GA","ADMIN"]
+  "admin_rebuild_lot_balance": ["ADMIN"]
 };
 
 function allowedRolesForAction_(action){
@@ -1220,6 +1218,7 @@ function allowedRolesForAction_(action){
 
   var low = a.toLowerCase();
   if(low.indexOf("dev_") === 0) return ["ADMIN"];
+  if(low.indexOf("admin_") === 0) return ["ADMIN"];
 
   // 讀取類：允許所有已登入角色
   if(low.indexOf("list_") === 0) return null;

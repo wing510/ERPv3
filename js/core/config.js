@@ -9,9 +9,9 @@
     // - 你只要填好 API_BASE_PROD / API_BASE_DEV
     // - 前端會依網址自動選擇（或用 ?env=DEV|PROD 強制）
     API_BASE_PROD:
-      "https://script.google.com/macros/s/AKfycbwYQyU9yvONQMzSlgJwSVJ3mkl6JcSTVIV4mUIAby7Yydxv8bdwey0KG7WVMU9aKsBy/exec", // prev: https://script.google.com/macros/s/AKfycbzSyD32l9WJDUDHqdCVXz8xsihb2c9ec-CdHlh37RGuper0wWfQV5xTYtxDoJ2y0adj/exec
+      "https://script.google.com/macros/s/AKfycbwSTk9UCvNs62nOvOpjKjN4fJdKx6ty43twqvYI7NXMd8GhoF4mdj3XmjbyyKCMuoob/exec", // prev: https://script.google.com/macros/s/AKfycbwYQyU9yvONQMzSlgJwSVJ3mkl6JcSTVIV4mUIAby7Yydxv8bdwey0KG7WVMU9aKsBy/exec
     API_BASE_DEV:
-      "https://script.google.com/macros/s/AKfycbytLafLy8PRVmGx3IVRCQ7j1WKj2Go4eRSevTCECDYR4IgukvLkDMQS5rZ61ex9HUTa/exec", // prev: https://script.google.com/macros/s/AKfycbzq1rWJ9Lx9agg3I6jprEpWk83TFUSc60ihWeuDIqVoBRLr7P4Sv-r1RmpEesHAU3gY/exec
+      "https://script.google.com/macros/s/AKfycbyjDcqBm2uPJQic7eAU0RNm_SEB2qa95DpmdTE6AD8ThEqXTmR4kkc9sjKPqWgBR23w/exec", // prev: https://script.google.com/macros/s/AKfycbytLafLy8PRVmGx3IVRCQ7j1WKj2Go4eRSevTCECDYR4IgukvLkDMQS5rZ61ex9HUTa/exec
     // 相容舊版：若你仍想手動指定單一 API_BASE，可在 window.__ERP_CONFIG__ 直接覆寫 API_BASE
     API_BASE: "", // prev: https://script.google.com/macros/s/AKfycbzSdWP40h38ps95laROnFNbaBm79a0o54Q6fOcWy6YRpUeaRGV1-RDOMwNFzXuR1UEb/exec
     // 可選：保護 dev_* 動作（後端 Script Properties 的 DEV_GUARD_TOKEN）

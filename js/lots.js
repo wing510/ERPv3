@@ -128,7 +128,7 @@ async function lotsRebuildBalanceClick(){
   try{
     const actor = typeof getCurrentUser === "function" ? String(getCurrentUser() || "").trim() : "";
     const r = await callAPI({
-      action: "dev_rebuild_lot_balance",
+      action: "admin_rebuild_lot_balance",
       created_by: actor,
       updated_by: actor
     }, { method: "POST" });
