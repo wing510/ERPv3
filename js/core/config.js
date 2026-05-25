@@ -9,7 +9,7 @@
     // - 你只要填好 API_BASE_PROD / API_BASE_DEV
     // - 前端會依網址自動選擇（或用 ?env=DEV|PROD 強制）
     API_BASE_PROD:
-      "https://script.google.com/macros/s/AKfycbzSyD32l9WJDUDHqdCVXz8xsihb2c9ec-CdHlh37RGuper0wWfQV5xTYtxDoJ2y0adj/exec",
+      "https://script.google.com/macros/s/AKfycbwYQyU9yvONQMzSlgJwSVJ3mkl6JcSTVIV4mUIAby7Yydxv8bdwey0KG7WVMU9aKsBy/exec", // prev: https://script.google.com/macros/s/AKfycbzSyD32l9WJDUDHqdCVXz8xsihb2c9ec-CdHlh37RGuper0wWfQV5xTYtxDoJ2y0adj/exec
     API_BASE_DEV:
       "https://script.google.com/macros/s/AKfycbytLafLy8PRVmGx3IVRCQ7j1WKj2Go4eRSevTCECDYR4IgukvLkDMQS5rZ61ex9HUTa/exec", // prev: https://script.google.com/macros/s/AKfycbzq1rWJ9Lx9agg3I6jprEpWk83TFUSc60ihWeuDIqVoBRLr7P4Sv-r1RmpEesHAU3gY/exec
     // 相容舊版：若你仍想手動指定單一 API_BASE，可在 window.__ERP_CONFIG__ 直接覆寫 API_BASE
